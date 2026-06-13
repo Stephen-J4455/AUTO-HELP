@@ -1,24 +1,66 @@
 import React from "react";
-import { View, Text, StyleSheet,Pressable, Image, TextInput , ImageBackground, Platform} from "react-native";
+import { View, Text, StyleSheet, Pressable, Image, TextInput, ImageBackground, Platform, Alert, ActivityIndicator } from "react-native";
 import { useTheme } from "../theme";
-import { Ionicons} from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "../context/Auth";
 
 
 export default function AuthScreen() {
   const { colors } = useTheme();
+  const { signIn, signUp, loading } = useAuth();
 
-  {/* toggle between login and sign up page */ }
   const [isLogin, setIsLogin] = React.useState(true);
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [username, setUsername] = React.useState("");
+  const [authLoading, setAuthLoading] = React.useState(false);
 
-  {/* identify native platform */ }
   const isNative = React.useMemo(() => {
     return Platform.OS !== "web";
   }, []);
-{/* if android , dont show apple login option */}
+
   const showAppleLogin = React.useMemo(() => {
     return isNative && Platform.OS === "ios";
   }, [isNative]);
 
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert("Error", "Please fill in all fields");
+      return;
+    }
+    setAuthLoading(true);
+    const { error } = await signIn(email, password);
+    setAuthLoading(false);
+    if (error) {
+      Alert.alert("Login Failed", error);
+    } else {
+      setEmail("");
+      setPassword("");
+    }
+  };
+
+  const handleSignUp = async () => {
+    if (!email || !password || !username) {
+      Alert.alert("Error", "Please fill in all fields");
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert("Error", "Password must be at least 6 characters");
+      return;
+    }
+    setAuthLoading(true);
+    const { error } = await signUp(email, password, username);
+    setAuthLoading(false);
+    if (error) {
+      Alert.alert("Sign Up Failed", error);
+    } else {
+      Alert.alert("Success", "Account created! Please check your email to confirm.");
+      setIsLogin(true);
+      setEmail("");
+      setPassword("");
+      setUsername("");
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -27,139 +69,153 @@ export default function AuthScreen() {
         style={styles.imageBackground}
       >
         <View style={styles.blendBackground}>
-          {/* login page section */}
-{isLogin ? (
-          <View style={styles.loginContainer}>
-            <Text style={[styles.text, { color: colors.surface }]}>
-              {" "}
-              Welcome Back!
-            </Text>
-            <Image
-              source={require("../../assets/icon.png")}
-              style={styles.logo}
-            />
-            <View style={styles.inputContainer}>
-              <Ionicons name="mail" size={24} color={colors.muted} />
-              <TextInput
-                style={[styles.input, { color: colors.surface }]}
-                placeholder="Email"
-                placeholderTextColor={colors.surface}
+          {isLogin ? (
+            <View style={styles.loginContainer}>
+              <Text style={[styles.text, { color: colors.surface }]}>
+                Welcome Back!
+              </Text>
+              <Image
+                source={require("../../assets/icon.png")}
+                style={styles.logo}
               />
-            </View>
-            <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed" size={24} color={colors.muted} />
-              <TextInput
-                style={[styles.input, { color: colors.surface }]}
-                placeholder="Password"
-                secureTextEntry
-                placeholderTextColor={colors.surface}
-              />
-            </View>
-            {/*fogot password link*/}
-            <Pressable style={{ marginTop: 20 }}>
-              <Text
-                style={{
-                  color: colors.primary,
-                  alignSelf: "flex-end",
-                  marginLeft: 140,
-                }}
+              <View style={styles.inputContainer}>
+                <Ionicons name="mail" size={24} color={colors.muted} />
+                <TextInput
+                  style={[styles.input, { color: colors.surface }]}
+                  placeholder="Email"
+                  placeholderTextColor={colors.surface}
+                  value={email}
+                  onChangeText={setEmail}
+                  editable={!authLoading}
+                />
+              </View>
+              <View style={styles.inputContainer}>
+                <Ionicons name="lock-closed" size={24} color={colors.muted} />
+                <TextInput
+                  style={[styles.input, { color: colors.surface }]}
+                  placeholder="Password"
+                  secureTextEntry
+                  placeholderTextColor={colors.surface}
+                  value={password}
+                  onChangeText={setPassword}
+                  editable={!authLoading}
+                />
+              </View>
+              <Pressable style={{ marginTop: 20 }}>
+                <Text
+                  style={{
+                    color: colors.primary,
+                    alignSelf: "flex-end",
+                    marginLeft: 140,
+                  }}
+                >
+                  Forgot Password?
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.loginbutton, { backgroundColor: colors.background, opacity: authLoading ? 0.5 : 1 }]}
+                onPress={handleLogin}
+                disabled={authLoading}
               >
-                Forgot Password?
-              </Text>
-            </Pressable>
-            <Pressable
-              style={[styles.loginbutton, { backgroundColor: colors.background }]}
-            >
-              <Text style={{ color: colors.text, fontWeight: "bold" }}>
-                Login
-              </Text>
+                {authLoading ? (
+                  <ActivityIndicator color={colors.text} />
+                ) : (
+                  <Text style={{ color: colors.text, fontWeight: "bold" }}>
+                    Login
+                  </Text>
+                )}
               </Pressable>
-              {/*social login*/}
               <View style={{ flexDirection: "row", marginTop: 20 }}>
-              <Pressable style={{ marginHorizontal: 10 }}>
-                <Ionicons name="logo-google" size={32} color={colors.muted} />
-              </Pressable>
-              <Pressable style={{ marginHorizontal: 10 }}>
-                <Ionicons name="logo-facebook" size={32} color={colors.muted} />
-              </Pressable>
-              <Pressable style={{ marginHorizontal: 10 }} disabled={!showAppleLogin}>
-                <Ionicons name="logo-apple" size={32} color={colors.muted} />
-              </Pressable>
-            </View>
-
-            {/*sign up page link*/}
-            <Pressable style={{ marginTop: 20 }} onPress={() => setIsLogin(false)}>
-              <Text style={{ color: colors.surface }}>
-                Don't have an account? Sign Up
-              </Text>
-            </Pressable>
-          </View>) : (
-
-        
-          <View style={styles.loginContainer}>
-            <Text style={[styles.text, { color: colors.surface }]}>
-              {" "}
-              Create New Account
-            </Text>
-            <Image
-              source={require("../../assets/icon.png")}
-              style={styles.logo}
-            />
-            <View style={styles.inputContainer}>
-              <Ionicons name="person" size={24} color={colors.muted } />
-              <TextInput
-                style={[styles.input, { color: colors.surface }]}
-                placeholder="Username"
-                placeholderTextColor={colors.surface}
-              />
-            </View>
-            <View style={styles.inputContainer}>
-              <Ionicons name="mail" size={24} color={colors.muted} />
-              <TextInput
-                style={[styles.input, { color: colors.surface }]}
-                placeholder="Email"
-                placeholderTextColor={colors.surface}
-              />
-            </View>
-            <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed" size={24} color={colors.muted} />
-              <TextInput
-                style={[styles.input, { color: colors.surface }]}
-                placeholder="Password"
-                secureTextEntry
-                placeholderTextColor={colors.surface}
-              />
-                </View>
-            <Pressable
-              style={[styles.loginbutton, { backgroundColor: colors.background }]}
-            >
-              <Text style={{ color: colors.text, fontWeight: "bold" }}>
-                Sign Up
-              </Text>
+                <Pressable style={{ marginHorizontal: 10 }}>
+                  <Ionicons name="logo-google" size={32} color={colors.muted} />
                 </Pressable>
-                {/*social sign up*/}
-              <View style={{ flexDirection: "row", marginTop: 20 }}>
-              <Pressable style={{ marginHorizontal: 10 }}>
-                <Ionicons name="logo-google" size={32} color={colors.muted} />
-              </Pressable>
-              <Pressable style={{ marginHorizontal: 10 }}>
-                <Ionicons name="logo-facebook" size={32} color={colors.muted} />
-                  </Pressable>  
-                  {/* make apple pressable disappear if platform is not ios */}
-              <Pressable style={{ marginHorizontal: 10 }} disabled={!showAppleLogin}>
-                <Ionicons name="logo-apple" size={32} color={colors.muted} />
+                <Pressable style={{ marginHorizontal: 10 }}>
+                  <Ionicons name="logo-facebook" size={32} color={colors.muted} />
+                </Pressable>
+                <Pressable style={{ marginHorizontal: 10 }} disabled={!showAppleLogin}>
+                  <Ionicons name="logo-apple" size={32} color={colors.muted} />
+                </Pressable>
+              </View>
+              <Pressable style={{ marginTop: 20 }} onPress={() => setIsLogin(false)}>
+                <Text style={{ color: colors.surface }}>
+                  Don't have an account? Sign Up
+                </Text>
               </Pressable>
             </View>
-
-            {/*login page link*/}
-            <Pressable style={{ marginTop: 20 }} onPress={() => setIsLogin(true)}>
-              <Text style={{ color: colors.surface }}>
-                Already have an account? Login
+          ) : (
+            <View style={styles.loginContainer}>
+              <Text style={[styles.text, { color: colors.surface }]}>
+                Create New Account
               </Text>
-            </Pressable>
-        </View>
+              <Image
+                source={require("../../assets/icon.png")}
+                style={styles.logo}
+              />
+              <View style={styles.inputContainer}>
+                <Ionicons name="person" size={24} color={colors.muted} />
+                <TextInput
+                  style={[styles.input, { color: colors.surface }]}
+                  placeholder="Username"
+                  placeholderTextColor={colors.surface}
+                  value={username}
+                  onChangeText={setUsername}
+                  editable={!authLoading}
+                />
+              </View>
+              <View style={styles.inputContainer}>
+                <Ionicons name="mail" size={24} color={colors.muted} />
+                <TextInput
+                  style={[styles.input, { color: colors.surface }]}
+                  placeholder="Email"
+                  placeholderTextColor={colors.surface}
+                  value={email}
+                  onChangeText={setEmail}
+                  editable={!authLoading}
+                />
+              </View>
+              <View style={styles.inputContainer}>
+                <Ionicons name="lock-closed" size={24} color={colors.muted} />
+                <TextInput
+                  style={[styles.input, { color: colors.surface }]}
+                  placeholder="Password (min 6 chars)"
+                  secureTextEntry
+                  placeholderTextColor={colors.surface}
+                  value={password}
+                  onChangeText={setPassword}
+                  editable={!authLoading}
+                />
+              </View>
+              <Pressable
+                style={[styles.loginbutton, { backgroundColor: colors.background, opacity: authLoading ? 0.5 : 1 }]}
+                onPress={handleSignUp}
+                disabled={authLoading}
+              >
+                {authLoading ? (
+                  <ActivityIndicator color={colors.text} />
+                ) : (
+                  <Text style={{ color: colors.text, fontWeight: "bold" }}>
+                    Sign Up
+                  </Text>
+                )}
+              </Pressable>
+              <View style={{ flexDirection: "row", marginTop: 20 }}>
+                <Pressable style={{ marginHorizontal: 10 }}>
+                  <Ionicons name="logo-google" size={32} color={colors.muted} />
+                </Pressable>
+                <Pressable style={{ marginHorizontal: 10 }}>
+                  <Ionicons name="logo-facebook" size={32} color={colors.muted} />
+                </Pressable>
+                <Pressable style={{ marginHorizontal: 10 }} disabled={!showAppleLogin}>
+                  <Ionicons name="logo-apple" size={32} color={colors.muted} />
+                </Pressable>
+              </View>
+              <Pressable style={{ marginTop: 20 }} onPress={() => setIsLogin(true)}>
+                <Text style={{ color: colors.surface }}>
+                  Already have an account? Login
+                </Text>
+              </Pressable>
+            </View>
           )}
-          {/*end of containers*/}
         </View>
       </ImageBackground>
     </View>

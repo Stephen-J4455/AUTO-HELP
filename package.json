@@ -4,17 +4,21 @@
   "main": "index.ts",
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
+    "@react-native-async-storage/async-storage": "^1.24.0",
     "@react-navigation/native": "^7.3.1",
     "@react-navigation/native-stack": "^7.17.3",
     "@react-navigation/stack": "^7.10.3",
     "@supabase/supabase-js": "^2.108.1",
-    "expo": "~56.0.9",
-    "expo-dev-client": "^56.0.19",
+    "expo": "~56.0.11",
+    "expo-dev-client": "^56.0.20",
+    "expo-font": "^56.0.6",
     "expo-status-bar": "~56.0.4",
     "expo-system-ui": "^56.0.5",
     "react": "19.2.3",
     "react-native": "0.85.3",
-    "react-native-safe-area-context": "^5.8.0"
+    "react-native-gesture-handler": "^2.31.2",
+    "react-native-safe-area-context": "^5.7.0",
+    "react-native-screens": "^4.25.2"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
