@@ -11,35 +11,48 @@ type Route = {
   component: React.ComponentType<any>;
 };
 
-export default function BottomNav({ routes }: { routes: Route[] }) {
+export default function BottomNav({ routes, navigation }: { routes: Route[]; navigation?: any }) {
   const [active, setActive] = useState(routes[0]?.key || '');
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-
-  const ActiveComponent = routes.find(r => r.key === active)?.component || null;
+  const navigateTo = (name: string, params?: any) => {
+    if (name === 'Main' || routes.find(r=>r.key===name)) {
+      // internal tab switch
+      setActive(name);
+      return;
+    }
+    navigation?.navigate(name, params);
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.content, { paddingBottom: 96 + insets.bottom }]}>
-        {ActiveComponent ? <ActiveComponent /> : null}
+      <View style={styles.content}>
+        {routes.map((r) => (
+          <View
+            key={r.key}
+            style={{ flex: 1, display: active === r.key ? "flex" : "none" }}
+          >
+            {React.createElement(r.component, { navigateTo })}
+          </View>
+        ))}
       </View>
 
-      <View style={[styles.bar, { bottom: 16 + insets.bottom }]}>
+      <View style={[styles.bar, { bottom: 8 + insets.bottom }]}>
         {routes.map((r) => (
           <TouchableOpacity
             key={r.key}
-            style={styles.tab}
             onPress={() => setActive(r.key)}
             activeOpacity={0.8}
           >
-            {r.icon ? (
+              {r.icon ? (
+            <View style={active === r.key ? {  borderRadius: 40 ,flexDirection: 'column', alignItems: 'center',justifyContent: 'center', backgroundColor: colors.primary , paddingVertical: 4, paddingHorizontal:30} : { alignItems: 'center', justifyContent: 'center', flexDirection: 'column'}}>
+                
               <Ionicons
                 name={r.icon as any}
-                size={22}
+                size={24}
                 color={active === r.key ? colors.surface : colors.muted}
-              />
-            ) : null}
-            <Text
+                />
+                 <Text
               style={[
                 styles.tabLabel,
                 { color: active === r.key ? colors.surface : colors.muted },
@@ -47,6 +60,8 @@ export default function BottomNav({ routes }: { routes: Route[] }) {
             >
               {r.label}
             </Text>
+           </View>
+            ) : null}
           </TouchableOpacity>
         ))}
       </View>
@@ -61,19 +76,19 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 20,
     right: 20,
-    height: 64,
-    borderRadius: 30,
+    height: 55,
+    borderRadius: 40,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
+
     backgroundColor: '#000',
     shadowColor: '#000',
     shadowOpacity: 0.25,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
-    paddingHorizontal: 8,
   },
-  tab: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  tabLabel: { fontSize: 12, fontWeight: '700', marginTop: 4, color: '#fff' },
+
+  tabLabel: { fontSize: 10, fontWeight: '700', marginTop: 0, color: '#fff' },
 });

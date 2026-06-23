@@ -13,6 +13,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AuthScreen from './src/screens/AuthScreen';
 import { AuthProvider, useAuth } from './src/context/Auth';
 import { storage } from './src/utils/storage';
+import { CartProvider } from './src/context/Cart';
 
 const Stack = createNativeStackNavigator();
 
@@ -71,7 +72,7 @@ function AppContent() {
             <Stack.Screen name="AuthScreen" component={AuthScreen} options={{headerShown: false}}/>
           </Stack.Navigator>
         </NavigationContainer>
-        <StatusBar style={scheme === 'dark' ? 'light' : 'light'} />
+        <StatusBar style="dark" />
       </SafeAreaProvider>
     );
   }
@@ -87,12 +88,13 @@ function AppContent() {
     <SafeAreaProvider>
       <NavigationContainer> 
         <Stack.Navigator>
-          <Stack.Screen name="Main" options={{ headerShown: false }} >
-            {() => <BottomNav routes={routes} />}
+          <Stack.Screen name="Main" options={{ headerShown: false }}>
+            {({ navigation }) => <BottomNav routes={routes} navigation={navigation} />}
           </Stack.Screen>
+          <Stack.Screen name="ProductDetails" component={require('./src/screens/ProductDetails').default} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
-      <StatusBar style={scheme === 'dark' ? 'light' : 'light'} />
+      <StatusBar style="dark" />
     </SafeAreaProvider>
   );
 }
@@ -100,7 +102,9 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <CartProvider>
+        <AppContent />
+      </CartProvider>
     </AuthProvider>
   );
 }

@@ -52,7 +52,7 @@ export default function Onboarding({ onFinish }: Props) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} >
-      <RNStatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <RNStatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
       <View style={[styles.statusBarOverlay, { height: insets.top, backgroundColor: colors.surface }]} />
       <ScrollView
         ref={(r) => { scrollRef.current = r }}
