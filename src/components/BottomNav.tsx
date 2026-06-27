@@ -45,7 +45,7 @@ export default function BottomNav({ routes, navigation }: { routes: Route[]; nav
             activeOpacity={0.8}
           >
               {r.icon ? (
-            <View style={active === r.key ? {  borderRadius: 40 ,flexDirection: 'column', alignItems: 'center',justifyContent: 'center', backgroundColor: colors.primary , paddingVertical: 4, paddingHorizontal:30} : { alignItems: 'center', justifyContent: 'center', flexDirection: 'column'}}>
+            <View style={active === r.key ? { flexDirection: 'column', alignItems: 'center',justifyContent: 'center'} : { alignItems: 'center', justifyContent: 'center', flexDirection: 'column'}}>
                 
               <Ionicons
                 name={r.icon as any}

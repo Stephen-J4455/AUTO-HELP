@@ -61,32 +61,43 @@ export default function Account() {
         <Text style={[styles.email, { color: colors.text }]}>{user.email}</Text>
 
         <View style={styles.infoSection}>
-          <Text style={[styles.label, { color: colors.muted }]}>Account ID</Text>
-          <Text style={[styles.value, { color: colors.text }]}>{user.id.slice(0, 12)}...</Text>
+          <Text style={[styles.label, { color: colors.muted }]}>
+            Account ID
+          </Text>
+          <Text style={[styles.value, { color: colors.text }]}>
+            {user.id.slice(0, 12)}...
+          </Text>
         </View>
 
         <View style={styles.infoSection}>
-          <Text style={[styles.label, { color: colors.muted }]}>Member Since</Text>
+          <Text style={[styles.label, { color: colors.muted }]}>
+            Member Since
+          </Text>
           <Text style={[styles.value, { color: colors.text }]}>
             {new Date(user.created_at!).toLocaleDateString()}
           </Text>
         </View>
-
-        <Pressable
-          style={[styles.signoutButton, { backgroundColor: colors.primary, opacity: signingOut ? 0.6 : 1 }]}
-          onPress={handleSignOut}
-          disabled={signingOut}
-        >
-          {signingOut ? (
-            <ActivityIndicator color={colors.surface} />
-          ) : (
-            <>
-              <Ionicons name="log-out" size={20} color={colors.surface} />
-              <Text style={[styles.signoutText, { color: colors.surface }]}>Sign Out</Text>
-            </>
-          )}
-        </Pressable>
       </View>
+
+      <Pressable
+        style={[
+          styles.signoutButton,
+          { backgroundColor: colors.primary, opacity: signingOut ? 0.6 : 1 },
+        ]}
+        onPress={handleSignOut}
+        disabled={signingOut}
+      >
+        {signingOut ? (
+          <ActivityIndicator color={colors.surface} />
+        ) : (
+          <>
+            <Ionicons name="log-out" size={20} color={colors.surface} />
+            <Text style={[styles.signoutText, { color: colors.surface }]}>
+              Sign Out
+            </Text>
+          </>
+        )}
+      </Pressable>
     </View>
   );
 }
@@ -94,12 +105,10 @@ export default function Account() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
+    alignItems: 'center'
   },
   card: {
-    borderRadius: 15,
+    borderRadius: 30,
     padding: 25,
     width: '100%',
     maxWidth: 400,
@@ -120,7 +129,8 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 10,
+    marginTop: 10,
   },
   email: {
     fontSize: 18,
@@ -130,6 +140,9 @@ const styles = StyleSheet.create({
   },
   infoSection: {
     marginBottom: 20,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
   },
   label: {
     fontSize: 12,
@@ -146,6 +159,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 30,
     paddingVertical: 12,
+    paddingHorizontal: 20,
     borderRadius: 30,
     gap: 10,
   },
