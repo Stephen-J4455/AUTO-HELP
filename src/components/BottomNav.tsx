@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRoute } from '@react-navigation/native';
 
 type Route = {
   key: string;
@@ -13,8 +14,37 @@ type Route = {
 
 export default function BottomNav({ routes, navigation }: { routes: Route[]; navigation?: any }) {
   const [active, setActive] = useState(routes[0]?.key || '');
+  const [tabsWidth, setTabsWidth] = useState(0);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const route = useRoute<any>();
+  const indicatorX = React.useRef(new Animated.Value(0)).current;
+
+  const activeIndex = React.useMemo(
+    () => Math.max(0, routes.findIndex((item) => item.key === active)),
+    [active, routes]
+  );
+  const segmentWidth = tabsWidth && routes.length ? tabsWidth / routes.length : 0;
+  const indicatorWidth = Math.max(0, segmentWidth - 8);
+
+  React.useEffect(() => {
+    if (!segmentWidth) return;
+    Animated.timing(indicatorX, {
+      toValue: activeIndex * segmentWidth + 4,
+      duration: 240,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [activeIndex, segmentWidth, indicatorX]);
+
+  React.useEffect(() => {
+    const targetTab = route?.params?.tab;
+    if (typeof targetTab === 'string' && routes.some((route) => route.key === targetTab)) {
+      setActive(targetTab);
+      navigation?.setParams?.({ tab: undefined });
+    }
+  }, [navigation, route?.params?.tab, routes]);
+
   const navigateTo = (name: string, params?: any) => {
     if (name === 'Main' || routes.find(r=>r.key===name)) {
       // internal tab switch
@@ -37,33 +67,51 @@ export default function BottomNav({ routes, navigation }: { routes: Route[]; nav
         ))}
       </View>
 
-      <View style={[styles.bar, { bottom: 8 + insets.bottom }]}>
-        {routes.map((r) => (
-          <TouchableOpacity
-            key={r.key}
-            onPress={() => setActive(r.key)}
-            activeOpacity={0.8}
-          >
-              {r.icon ? (
-            <View style={active === r.key ? { flexDirection: 'column', alignItems: 'center',justifyContent: 'center'} : { alignItems: 'center', justifyContent: 'center', flexDirection: 'column'}}>
-                
-              <Ionicons
-                name={r.icon as any}
-                size={24}
-                color={active === r.key ? colors.surface : colors.muted}
-                />
-                 <Text
-              style={[
-                styles.tabLabel,
-                { color: active === r.key ? colors.surface : colors.muted },
-              ]}
+      <View
+        style={[
+          styles.bar,
+          {
+            bottom: 10 + insets.bottom,
+            backgroundColor: colors.surface,
+            borderColor: colors.background,
+          },
+        ]}
+      >
+        <View style={styles.tabsRow} onLayout={(event) => setTabsWidth(event.nativeEvent.layout.width)}>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.activeIndicator,
+              {
+              width: indicatorWidth,
+                backgroundColor: colors.primary,
+              paddingVertical: 20,
+              transform: [{ translateX: indicatorX }],
+              },
+            ]}
+          />
+          {routes.map((r) => (
+            <TouchableOpacity
+              key={r.key}
+              onPress={() => setActive(r.key)}
+              activeOpacity={0.8}
+              style={styles.tab}
             >
-              {r.label}
-            </Text>
-           </View>
-            ) : null}
-          </TouchableOpacity>
-        ))}
+              {r.icon ? (
+              <View style={styles.tabInner}>
+                <Ionicons
+                  name={r.icon as any}
+                  size={18}
+                  color={active === r.key ? '#fff' : colors.muted}
+                />
+                <Text style={[styles.tabLabel, { color: active === r.key ? '#fff' : colors.muted }]}>
+                  {r.label}
+                </Text>
+              </View>
+              ) : null}
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -74,21 +122,42 @@ const styles = StyleSheet.create({
   content: { flex: 1 },
   bar: {
     position: 'absolute',
-    left: 20,
-    right: 20,
-    height: 55,
-    borderRadius: 40,
+    left: 14,
+    right: 14,
+    height: 64,
+    borderRadius: 30,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  tabsRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-
-    backgroundColor: '#000',
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    position: 'relative',
   },
-
-  tabLabel: { fontSize: 10, fontWeight: '700', marginTop: 0, color: '#fff' },
+  activeIndicator: {
+    position: 'absolute',
+    left: 0,
+    top: 7,
+    bottom: 7,
+    borderRadius: 26,
+    
+  },
+  tab: {
+    flex: 1,
+    height: 50,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 4,
+  },
+  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 3 },
+  tabLabel: { fontSize: 11, fontWeight: '800' },
 });

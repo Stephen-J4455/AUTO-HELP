@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Onboarding from './src/screens/Onboarding';
 import Home from './src/screens/Home';
 import Search from './src/screens/Search';
 import Cart from './src/screens/Cart';
 import Account from './src/screens/Account';
+import Checkout from './src/screens/Checkout';
+import Categories from './src/screens/Categories';
+import CategoryProducts from './src/screens/CategoryProducts';
+import Notifications from './src/screens/Notifications';
 import BottomNav from './src/components/BottomNav';
 import { useTheme } from './src/theme';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -14,8 +19,61 @@ import AuthScreen from './src/screens/AuthScreen';
 import { AuthProvider, useAuth } from './src/context/Auth';
 import { storage } from './src/utils/storage';
 import { CartProvider } from './src/context/Cart';
+import { CategoryProvider } from './src/context/Categories';
 
 const Stack = createNativeStackNavigator();
+
+function AppLoadingScreen() {
+  const { colors } = useTheme();
+  const pulse = React.useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [pulse]);
+
+  const scale = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.08],
+  });
+  const opacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.55, 1],
+  });
+
+  return (
+    <View style={[loaderStyles.container, { backgroundColor: colors.background }]}>
+      <Animated.View
+        style={[
+          loaderStyles.logoWrap,
+          {
+            backgroundColor: `${colors.primary}20`,
+            transform: [{ scale }],
+            opacity,
+          },
+        ]}
+      >
+        <Text style={[loaderStyles.logoText, { color: colors.primary }]}>AH</Text>
+      </Animated.View>
+      <Text style={[loaderStyles.title, { color: colors.text }]}>AUTO HELP GH</Text>
+      <Text style={[loaderStyles.subtitle, { color: colors.muted }]}>Loading app...</Text>
+    </View>
+  );
+}
 
 function AppContent() {
   const [showOnboarding, setShowOnboarding] = useState(true);
@@ -52,7 +110,7 @@ function AppContent() {
   };
 
   if (!onboardingLoaded || loading) {
-    return null; // or a loading screen
+    return <AppLoadingScreen />;
   }
 
   if (showOnboarding) {
@@ -92,6 +150,10 @@ function AppContent() {
             {({ navigation }) => <BottomNav routes={routes} navigation={navigation} />}
           </Stack.Screen>
           <Stack.Screen name="ProductDetails" component={require('./src/screens/ProductDetails').default} options={{ headerShown: false }} />
+          <Stack.Screen name="CategoriesList" component={Categories} options={{ headerShown: false }} />
+          <Stack.Screen name="CategoryProducts" component={CategoryProducts} options={{ headerShown: false }} />
+          <Stack.Screen name="Notifications" component={Notifications} options={{ headerShown: false }} />
+          <Stack.Screen name="Checkout" component={Checkout} options={{ title: 'Checkout' }} />
         </Stack.Navigator>
       </NavigationContainer>
       <StatusBar style="dark" />
@@ -102,10 +164,40 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <CartProvider>
-        <AppContent />
-      </CartProvider>
+      <CategoryProvider>
+        <CartProvider>
+          <AppContent />
+        </CartProvider>
+      </CategoryProvider>
     </AuthProvider>
   );
 }
 
+const loaderStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  logoWrap: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoText: {
+    fontSize: 26,
+    fontWeight: '900',
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
+  subtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+});

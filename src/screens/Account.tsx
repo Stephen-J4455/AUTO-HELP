@@ -1,13 +1,49 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Alert, ActivityIndicator, ScrollView, TextInput, Switch, TouchableOpacity } from 'react-native';
 import { useTheme } from '../theme';
 import { useAuth } from '../context/Auth';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '../supabase/supabase';
 
-export default function Account() {
+type Profile = {
+  fullName: string;
+  phone: string;
+  notifications: boolean;
+};
+
+export default function Account({ navigateTo }: { navigateTo?: (name: string, params?: any) => void }) {
   const { colors } = useTheme();
   const { user, session, signOut, loading } = useAuth();
   const [signingOut, setSigningOut] = React.useState(false);
+  const [savingProfile, setSavingProfile] = React.useState(false);
+  const [profile, setProfile] = React.useState<Profile>({ fullName: '', phone: '', notifications: true });
+
+  React.useEffect(() => {
+    let mounted = true;
+    async function loadProfile() {
+      if (!user?.id) return;
+      const { data, error } = await supabase
+        .from('customer_profiles')
+        .select('full_name, phone, notifications_enabled')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (error) {
+        console.warn('Profile load failed', error.message);
+        return;
+      }
+      if (mounted && data) {
+        setProfile({
+          fullName: data.full_name || '',
+          phone: data.phone || '',
+          notifications: data.notifications_enabled ?? true,
+        });
+      }
+    }
+    void loadProfile();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
 
   const handleSignOut = async () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -28,6 +64,29 @@ export default function Account() {
       },
     ]);
   };
+
+  async function saveProfile() {
+    if (!user?.id) return;
+    setSavingProfile(true);
+    try {
+      const { error } = await supabase.from('customer_profiles').upsert(
+        {
+          user_id: user.id,
+          email: user.email,
+          full_name: profile.fullName.trim() || null,
+          phone: profile.phone.trim() || null,
+          notifications_enabled: profile.notifications,
+        },
+        { onConflict: 'user_id' }
+      );
+      if (error) throw new Error(error.message);
+      Alert.alert('Saved', 'Your profile settings were updated.');
+    } catch (error) {
+      Alert.alert('Save failed', error instanceof Error ? error.message : 'Could not save profile.');
+    } finally {
+      setSavingProfile(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -52,31 +111,96 @@ export default function Account() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.card, { backgroundColor: colors.surface }]}>
-        <View style={styles.avatarContainer}>
-          <Ionicons name="person-circle" size={80} color={colors.primary} />
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      contentContainerStyle={{ paddingBottom: 120 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={[styles.heroCard, { backgroundColor: colors.surface, borderColor: colors.background }]}>
+        <View style={[styles.avatar, { backgroundColor: `${colors.primary}20` }]}>
+          <Ionicons name="person" size={30} color={colors.primary} />
         </View>
-
-        <Text style={[styles.email, { color: colors.text }]}>{user.email}</Text>
-
-        <View style={styles.infoSection}>
-          <Text style={[styles.label, { color: colors.muted }]}>
-            Account ID
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
+            {profile.fullName || 'Auto Help Customer'}
           </Text>
-          <Text style={[styles.value, { color: colors.text }]}>
-            {user.id.slice(0, 12)}...
+          <Text style={[styles.email, { color: colors.muted }]} numberOfLines={1}>
+            {user.email}
           </Text>
-        </View>
-
-        <View style={styles.infoSection}>
-          <Text style={[styles.label, { color: colors.muted }]}>
-            Member Since
-          </Text>
-          <Text style={[styles.value, { color: colors.text }]}>
-            {new Date(user.created_at!).toLocaleDateString()}
+          <Text style={{ color: colors.muted, fontSize: 12 }}>
+            Member since {new Date(user.created_at!).toLocaleDateString()}
           </Text>
         </View>
+      </View>
+
+      <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Profile details</Text>
+        <TextInput
+          value={profile.fullName}
+          onChangeText={(value) => setProfile((prev) => ({ ...prev, fullName: value }))}
+          placeholder="Full name"
+          placeholderTextColor={colors.muted}
+          style={[styles.input, { borderColor: colors.background, color: colors.text }]}
+        />
+        <TextInput
+          value={profile.phone}
+          onChangeText={(value) => setProfile((prev) => ({ ...prev, phone: value }))}
+          placeholder="Phone number"
+          placeholderTextColor={colors.muted}
+          keyboardType="phone-pad"
+          style={[styles.input, { borderColor: colors.background, color: colors.text }]}
+        />
+        <TouchableOpacity
+          style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: savingProfile ? 0.7 : 1 }]}
+          onPress={() => void saveProfile()}
+          disabled={savingProfile}
+        >
+          {savingProfile ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Save profile</Text>}
+        </TouchableOpacity>
+      </View>
+
+      <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick actions</Text>
+        <TouchableOpacity style={styles.settingRow} onPress={() => navigateTo?.('Notifications')}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
+            <Ionicons name="notifications-outline" size={16} color={colors.primary} />
+            </View>
+            <View>
+            <Text style={{ color: colors.text, fontWeight: '700' }}>Notifications</Text>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>View all updates</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </TouchableOpacity>
+        <View style={styles.settingRow}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
+            <Ionicons name="notifications" size={16} color={colors.primary} />
+            </View>
+            <View>
+            <Text style={{ color: colors.text, fontWeight: '700' }}>Push alerts</Text>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>Order updates and alerts</Text>
+            </View>
+          </View>
+          <Switch
+            value={profile.notifications}
+            onValueChange={(value) => setProfile((prev) => ({ ...prev, notifications: value }))}
+            trackColor={{ false: '#b0b0b0', true: colors.primary }}
+          />
+        </View>
+        <TouchableOpacity style={styles.settingRow} onPress={() => navigateTo?.('Checkout')}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
+            <Ionicons name="location-outline" size={16} color={colors.primary} />
+            </View>
+            <View>
+            <Text style={{ color: colors.text, fontWeight: '700' }}>Address book</Text>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>Manage shipping addresses</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </TouchableOpacity>
       </View>
 
       <Pressable
@@ -92,79 +216,89 @@ export default function Account() {
         ) : (
           <>
             <Ionicons name="log-out" size={20} color={colors.surface} />
-            <Text style={[styles.signoutText, { color: colors.surface }]}>
-              Sign Out
-            </Text>
+            <Text style={[styles.signoutText, { color: colors.surface }]}>Sign Out</Text>
           </>
         )}
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center'
+    paddingTop: 20,
+    paddingHorizontal: 16,
   },
-  card: {
-    borderRadius: 30,
-    padding: 25,
-    width: '100%',
-    maxWidth: 400,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+  heroCard: {
+    borderRadius: 18,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+    borderWidth: 1,
   },
+  avatar: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
   text: {
     fontSize: 18,
     marginBottom: 20,
   },
-  loginbutton: {
-    marginTop: 20,
-    padding: 12,
-    borderRadius: 30,
+  loginbutton: { marginTop: 20, padding: 12, borderRadius: 30 },
+  name: { fontSize: 16, fontWeight: '900', marginBottom: 2 },
+  email: { fontSize: 13, fontWeight: '600', marginBottom: 2 },
+  sectionCard: {
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 12,
   },
-  avatarContainer: {
-    alignItems: 'center',
+  sectionTitle: { fontSize: 16, fontWeight: '900', marginBottom: 10 },
+  input: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    height: 48,
     marginBottom: 10,
-    marginTop: 10,
-  },
-  email: {
-    fontSize: 18,
     fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 25,
   },
-  infoSection: {
-    marginBottom: 20,
-    display: 'flex',
-    flexDirection: 'column',
+  primaryBtn: {
+    height: 46,
+    borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  label: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginBottom: 5,
+  primaryBtnText: {
+    color: '#fff',
+    fontWeight: '800',
   },
-  value: {
-    fontSize: 14,
-    fontWeight: '600',
+  settingRow: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+  },
+  settingLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  settingIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   signoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 30,
+    marginTop: 8,
     paddingVertical: 12,
     paddingHorizontal: 20,
-    borderRadius: 30,
+    borderRadius: 16,
     gap: 10,
+    marginBottom: 24,
   },
   signoutText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '800',
   },
 });
