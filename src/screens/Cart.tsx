@@ -24,7 +24,7 @@ export default function Cart({ navigateTo }: { navigateTo?: (name: string, param
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>Your Cart</Text>
+        <Text style={[styles.title, { color: colors.text }]}></Text>
         <Text style={{ color: colors.muted }}>{items.length} items</Text>
       </View>
 

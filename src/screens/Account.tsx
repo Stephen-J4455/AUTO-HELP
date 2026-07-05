@@ -227,7 +227,7 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 20,
+    paddingTop: 50,
     paddingHorizontal: 16,
   },
   heroCard: {

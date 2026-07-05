@@ -71,7 +71,7 @@ export default function Search({ navigateTo }: { navigateTo?: (name: string, par
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>Search Products</Text>
+        <Text style={[styles.title, { color: colors.text }]}></Text>
         <Text style={[styles.subtitle, { color: colors.muted }]}>Find by name, SKU, or brand</Text>
       </View>
 
@@ -175,9 +175,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   input: { flex: 1, marginLeft: 10, fontSize: 15, fontWeight: '600' },
-  brandsList: { paddingLeft: 16, maxHeight: 52 },
+  brandsList: { paddingHorizontal: 6,paddingBottom: 30, maxHeight: 45,},
   brandChip: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 24,
     height: 34,
     borderRadius: 17,
     alignItems: 'center',
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   loaderWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  results: { padding: 16, paddingBottom: 120, gap: 12 },
+  results: { padding: 16, paddingBottom: 90, gap: 12 },
   card: {
     borderRadius: 18,
     flexDirection: 'row',

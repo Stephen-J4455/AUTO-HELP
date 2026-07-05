@@ -128,7 +128,7 @@ export default function Notifications({ navigation }: { navigation: any }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 20 },
+  container: { flex: 1, paddingTop: 40 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, marginBottom: 10 },
   backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 28, fontWeight: '900' },

@@ -507,7 +507,7 @@ const styles = StyleSheet.create({
   imagePlaceholder: { width, height: 300, alignItems: 'center', justifyContent: 'center' },
   heroActions: {
     position: 'absolute',
-    top: 18,
+    top: 38,
     left: 16,
     right: 16,
     flexDirection: 'row',

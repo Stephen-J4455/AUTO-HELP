@@ -142,7 +142,7 @@ export default function CategoryProducts({ route, navigation }: { route: any; na
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 20 },
+  container: { flex: 1, paddingTop: 40 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, marginBottom: 12 },
   iconBtn: {
     width: 36,
