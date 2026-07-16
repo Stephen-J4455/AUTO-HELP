@@ -124,8 +124,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 14,
     right: 14,
-    height: 64,
-    borderRadius: 30,
+    height: 60,
+    borderRadius: 24,
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 2,
@@ -145,9 +145,9 @@ const styles = StyleSheet.create({
   activeIndicator: {
     position: 'absolute',
     left: 0,
-    top: 7,
-    bottom: 7,
-    borderRadius: 26,
+    top: 4,
+    bottom: 4,
+    borderRadius: 18,
     
   },
   tab: {

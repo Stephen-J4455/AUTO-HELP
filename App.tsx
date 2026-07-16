@@ -5,11 +5,13 @@ import Onboarding from './src/screens/Onboarding';
 import Home from './src/screens/Home';
 import Search from './src/screens/Search';
 import Cart from './src/screens/Cart';
+import Vehicle from './src/screens/Vehicle';
 import Account from './src/screens/Account';
 import Checkout from './src/screens/Checkout';
 import Categories from './src/screens/Categories';
 import CategoryProducts from './src/screens/CategoryProducts';
 import Notifications from './src/screens/Notifications';
+import VehicleParts from './src/screens/VehicleParts';
 import BottomNav from './src/components/BottomNav';
 import { useTheme } from './src/theme';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -138,6 +140,7 @@ function AppContent() {
   const routes = [
     { key: 'home', label: 'Home', icon: 'home', component: Home },
     { key: 'search', label: 'Search', icon: 'search', component: Search },
+    { key: 'vehicle', label: 'Vehicle', icon: 'car-sport', component: Vehicle },
     { key: 'cart', label: 'Cart', icon: 'cart', component: Cart },
     { key: 'account', label: 'Account', icon: 'person', component: Account },
   ];
@@ -152,6 +155,7 @@ function AppContent() {
           <Stack.Screen name="ProductDetails" component={require('./src/screens/ProductDetails').default} options={{ headerShown: false }} />
           <Stack.Screen name="CategoriesList" component={Categories} options={{ headerShown: false }} />
           <Stack.Screen name="CategoryProducts" component={CategoryProducts} options={{ headerShown: false }} />
+          <Stack.Screen name="VehicleParts" component={VehicleParts} options={{ headerShown: false }} />
           <Stack.Screen name="Notifications" component={Notifications} options={{ headerShown: false }} />
           <Stack.Screen name="Checkout" component={Checkout} options={{ title: 'Checkout' }} />
         </Stack.Navigator>
