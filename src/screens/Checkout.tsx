@@ -4,7 +4,7 @@ import {
   Alert,
   FlatList,
   Image,
-  Linking,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,6 +18,8 @@ import { useAuth } from '../context/Auth';
 import { supabase } from '../supabase/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { formatCedis } from '../utils/currency';
+import { WebView } from 'react-native-webview';
+import type { WebViewMessageEvent } from 'react-native-webview';
 
 type Address = {
   id: string;
@@ -30,7 +32,80 @@ type Address = {
   is_default: boolean;
 };
 
-const paystackLink = process.env.EXPO_PUBLIC_PAYSTACK_PAYMENT_LINK;
+type CheckoutItemPayload = {
+  product_id: string;
+  sku: string | null;
+  quantity: number;
+};
+
+type PendingPaymentContext = {
+  reference: string;
+  cartItems: CheckoutItemPayload[];
+  shippingAddress: Address;
+  shippingCost: number;
+};
+
+function buildPaystackInlineHtml({
+  publicKey,
+  email,
+  amountKobo,
+  reference,
+  accessCode,
+}: {
+  publicKey: string;
+  email: string;
+  amountKobo: number;
+  reference: string;
+  accessCode?: string;
+}) {
+  const config = accessCode
+    ? {
+        key: publicKey,
+        access_code: accessCode,
+      }
+    : {
+        key: publicKey,
+        email,
+        amount: amountKobo,
+        ref: reference,
+      };
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <style>
+      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #ffffff; }
+      .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+      .text { color: #800020; font-weight: 700; font-size: 16px; }
+    </style>
+    <script src="https://js.paystack.co/v1/inline.js"></script>
+  </head>
+  <body>
+    <div class="wrap"><div class="text">Initializing secure payment...</div></div>
+    <script>
+      (function () {
+        function postMessage(data) {
+          window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(data));
+        }
+        try {
+          var handler = PaystackPop.setup({
+            ...${JSON.stringify(config)},
+            callback: function(response) {
+              postMessage({ type: "success", reference: response && response.reference ? response.reference : "${reference}" });
+            },
+            onClose: function() {
+              postMessage({ type: "close" });
+            }
+          });
+          handler.openIframe();
+        } catch (error) {
+          postMessage({ type: "error", message: error && error.message ? error.message : "Unable to initialize Paystack." });
+        }
+      })();
+    </script>
+  </body>
+</html>`;
+}
 
 export default function Checkout({ navigation }: { navigation: any }) {
   const { colors } = useTheme();
@@ -38,6 +113,9 @@ export default function Checkout({ navigation }: { navigation: any }) {
   const { items, total, clear } = useCart();
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
+  const [paystackHtml, setPaystackHtml] = useState<string | null>(null);
+  const [pendingPayment, setPendingPayment] = useState<PendingPaymentContext | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -187,61 +265,102 @@ export default function Checkout({ navigation }: { navigation: any }) {
       Alert.alert('Address required', 'Please select or add a shipping address.');
       return;
     }
-    if (!paystackLink) {
-      Alert.alert('Paystack config missing', 'Set EXPO_PUBLIC_PAYSTACK_PAYMENT_LINK to enable Paystack checkout.');
-      return;
-    }
-
     setPaying(true);
     try {
       const orderRef = `AHG-${Date.now()}`;
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          user_id: user.id,
-          status: 'pending',
-          total_amount: grandTotal,
-          shipping_cost: deliveryFee,
-          currency: 'GHS',
-          shipping_address: selectedAddress,
-          metadata: { source: 'mobile-app', reference: orderRef },
-        })
-        .select('id')
-        .single();
-      if (orderError) throw new Error(orderError.message);
-
-      const lineItems = items.map((item) => ({
-        order_id: order.id,
+      const cartItems: CheckoutItemPayload[] = items.map((item) => ({
         product_id: item.product_id,
-        variant_sku: item.sku || null,
+        sku: item.sku || null,
         quantity: item.quantity,
-        unit_price: item.price,
-        subtotal: item.quantity * item.price,
       }));
-      const { error: orderItemsError } = await supabase.from('order_items').insert(lineItems);
-      if (orderItemsError) throw new Error(orderItemsError.message);
-
-      const { error: paymentError } = await supabase.from('payments').insert({
-        order_id: order.id,
-        provider: 'paystack',
-        status: 'initiated',
-        amount: grandTotal,
-        currency: 'GHS',
-        metadata: { reference: orderRef, channel: 'payment-link' },
+      const { data, error } = await supabase.functions.invoke('initialize-paystack-payment', {
+        body: {
+          amount: grandTotal,
+          reference: orderRef,
+          metadata: {
+            shipping_cost: deliveryFee,
+            shipping_address: selectedAddress,
+            cart_items: cartItems,
+          },
+        },
       });
-      if (paymentError) throw new Error(paymentError.message);
+      if (error) throw new Error(error.message);
 
-      const checkoutUrl = `${paystackLink}?reference=${encodeURIComponent(orderRef)}&email=${encodeURIComponent(
-        user.email || ''
-      )}&amount=${Math.round(grandTotal * 100)}`;
-      await Linking.openURL(checkoutUrl);
-      await clear();
-      Alert.alert('Payment started', 'You were redirected to Paystack to complete payment.');
-      navigation.goBack();
+      const publicKey = String(data?.public_key || '').trim();
+      const accessCode = String(data?.access_code || '').trim();
+      const reference = String(data?.reference || orderRef).trim();
+      if (!publicKey || !reference) {
+        throw new Error('Paystack initialization response is incomplete.');
+      }
+
+      setPendingPayment({
+        reference,
+        cartItems,
+        shippingAddress: selectedAddress,
+        shippingCost: deliveryFee,
+      });
+      setPaystackHtml(
+        buildPaystackInlineHtml({
+          publicKey,
+          email: user.email || '',
+          amountKobo: Math.round(grandTotal * 100),
+          reference,
+          accessCode: accessCode || undefined,
+        })
+      );
     } catch (error) {
       Alert.alert('Checkout failed', error instanceof Error ? error.message : 'Could not start checkout');
     } finally {
       setPaying(false);
+    }
+  }
+
+  async function handlePaystackWebMessage(event: WebViewMessageEvent) {
+    let payload: { type?: string; reference?: string; message?: string } = {};
+    try {
+      payload = JSON.parse(event.nativeEvent.data || '{}');
+    } catch {
+      return;
+    }
+
+    if (payload.type === 'close') {
+      setPaystackHtml(null);
+      setPendingPayment(null);
+      return;
+    }
+
+    if (payload.type === 'error') {
+      setPaystackHtml(null);
+      Alert.alert('Payment error', payload.message || 'Unable to initialize Paystack payment.');
+      return;
+    }
+
+    if (payload.type !== 'success' || verifyingPayment || !pendingPayment) return;
+
+    setPaystackHtml(null);
+    setVerifyingPayment(true);
+    try {
+      const verifyReference = payload.reference || pendingPayment.reference;
+      const { data, error } = await supabase.functions.invoke('verify-paystack-payment', {
+        body: {
+          reference: verifyReference,
+          cart_items: pendingPayment.cartItems,
+          shipping_cost: pendingPayment.shippingCost,
+          shipping_address: pendingPayment.shippingAddress,
+          metadata: { source: 'mobile-inline-paystack' },
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.ok) throw new Error(data?.error || 'Payment verification failed.');
+
+      await clear();
+      setPendingPayment(null);
+      Alert.alert('Payment successful', 'Your order has been placed successfully.');
+      navigation.navigate('Orders');
+    } catch (error) {
+      Alert.alert('Verification failed', error instanceof Error ? error.message : 'Could not verify payment.');
+    } finally {
+      setVerifyingPayment(false);
     }
   }
 
@@ -556,11 +675,11 @@ export default function Checkout({ navigation }: { navigation: any }) {
             <Text style={{ color: colors.primary, fontWeight: '900', fontSize: 16 }}>{formatCedis(grandTotal)}</Text>
           </View>
           <TouchableOpacity
-            style={[styles.payBtn, { backgroundColor: colors.primary, opacity: paying ? 0.7 : 1 }]}
+            style={[styles.payBtn, { backgroundColor: colors.primary, opacity: paying || verifyingPayment ? 0.7 : 1 }]}
             onPress={() => void startPaystackCheckout()}
-            disabled={paying}
+            disabled={paying || verifyingPayment}
           >
-            {paying ? (
+            {paying || verifyingPayment ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <>
@@ -572,6 +691,30 @@ export default function Checkout({ navigation }: { navigation: any }) {
         </View>
         </>
       )}
+      <Modal visible={Boolean(paystackHtml)} animationType="slide" onRequestClose={() => setPaystackHtml(null)}>
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <View style={[styles.inlineHeader, { borderBottomColor: colors.background }]}>
+            <Text style={[styles.inlineTitle, { color: colors.text }]}>Paystack Checkout</Text>
+            <TouchableOpacity onPress={() => setPaystackHtml(null)} style={styles.inlineCloseBtn}>
+              <Ionicons name="close" size={22} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          {paystackHtml ? (
+            <WebView
+              source={{ html: paystackHtml }}
+              onMessage={handlePaystackWebMessage}
+              javaScriptEnabled
+              domStorageEnabled
+              startInLoadingState
+              renderLoading={() => (
+                <View style={styles.center}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                </View>
+              )}
+            />
+          ) : null}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -623,6 +766,16 @@ const styles = StyleSheet.create({
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   payBtn: { height: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginTop: 10, flexDirection: 'row', gap: 8 },
   payText: { color: '#fff', fontWeight: '900', fontSize: 16 },
+  inlineHeader: {
+    height: 54,
+    borderBottomWidth: 1,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  inlineTitle: { fontSize: 16, fontWeight: '800' },
+  inlineCloseBtn: { padding: 4 },
   itemRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, gap: 10 },
   itemImage: { width: 80, height: 80, borderRadius: 10, backgroundColor: '#f0f0f0' },
   divider: { height: 1, marginVertical: 8 },

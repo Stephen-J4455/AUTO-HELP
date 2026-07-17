@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Onboarding from './src/screens/Onboarding';
 import Home from './src/screens/Home';
@@ -7,6 +7,7 @@ import Search from './src/screens/Search';
 import Cart from './src/screens/Cart';
 import Vehicle from './src/screens/Vehicle';
 import Account from './src/screens/Account';
+import Orders from './src/screens/Orders';
 import Checkout from './src/screens/Checkout';
 import Categories from './src/screens/Categories';
 import CategoryProducts from './src/screens/CategoryProducts';
@@ -69,7 +70,7 @@ function AppLoadingScreen() {
           },
         ]}
       >
-        <Text style={[loaderStyles.logoText, { color: colors.primary }]}>AH</Text>
+        <Image source={require('./assets/icon.png')} style={loaderStyles.logoImage} resizeMode="contain" />
       </Animated.View>
       <Text style={[loaderStyles.title, { color: colors.text }]}>AUTO HELP GH</Text>
       <Text style={[loaderStyles.subtitle, { color: colors.muted }]}>Loading app...</Text>
@@ -157,6 +158,7 @@ function AppContent() {
           <Stack.Screen name="CategoryProducts" component={CategoryProducts} options={{ headerShown: false }} />
           <Stack.Screen name="VehicleParts" component={VehicleParts} options={{ headerShown: false }} />
           <Stack.Screen name="Notifications" component={Notifications} options={{ headerShown: false }} />
+          <Stack.Screen name="Orders" component={Orders} options={{ title: 'My Orders' }} />
           <Stack.Screen name="Checkout" component={Checkout} options={{ title: 'Checkout' }} />
         </Stack.Navigator>
       </NavigationContainer>
@@ -191,9 +193,9 @@ const loaderStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoText: {
-    fontSize: 26,
-    fontWeight: '900',
+  logoImage: {
+   
+    borderRadius: 50,
   },
   title: {
     fontSize: 18,

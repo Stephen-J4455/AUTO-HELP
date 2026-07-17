@@ -161,6 +161,18 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
 
       <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick actions</Text>
+        <TouchableOpacity style={styles.settingRow} onPress={() => navigateTo?.('Orders')}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
+            <Ionicons name="receipt-outline" size={16} color={colors.primary} />
+            </View>
+            <View>
+            <Text style={{ color: colors.text, fontWeight: '700' }}>My Orders</Text>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>View placed orders</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </TouchableOpacity>
         <TouchableOpacity style={styles.settingRow} onPress={() => navigateTo?.('Notifications')}>
           <View style={styles.settingLeft}>
             <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
