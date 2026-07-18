@@ -8,6 +8,7 @@ import Cart from './src/screens/Cart';
 import Vehicle from './src/screens/Vehicle';
 import Account from './src/screens/Account';
 import Orders from './src/screens/Orders';
+import OrderDetails from './src/screens/OrderDetails';
 import Checkout from './src/screens/Checkout';
 import Categories from './src/screens/Categories';
 import CategoryProducts from './src/screens/CategoryProducts';
@@ -159,6 +160,7 @@ function AppContent() {
           <Stack.Screen name="VehicleParts" component={VehicleParts} options={{ headerShown: false }} />
           <Stack.Screen name="Notifications" component={Notifications} options={{ headerShown: false }} />
           <Stack.Screen name="Orders" component={Orders} options={{ title: 'My Orders' }} />
+          <Stack.Screen name="OrderDetails" component={OrderDetails} options={{ headerShown: false }} />
           <Stack.Screen name="Checkout" component={Checkout} options={{ title: 'Checkout' }} />
         </Stack.Navigator>
       </NavigationContainer>

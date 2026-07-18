@@ -58,17 +58,16 @@ function buildPaystackInlineHtml({
   reference: string;
   accessCode?: string;
 }) {
-  const config = accessCode
-    ? {
-        key: publicKey,
-        access_code: accessCode,
-      }
-    : {
-        key: publicKey,
-        email,
-        amount: amountKobo,
-        ref: reference,
-      };
+  const config: Record<string, unknown> = {
+    key: publicKey,
+    email,
+    amount: amountKobo,
+    ref: reference,
+    currency: 'GHS',
+  };
+  if (accessCode) {
+    config.access_code = accessCode;
+  }
   return `<!DOCTYPE html>
 <html>
   <head>
@@ -265,6 +264,11 @@ export default function Checkout({ navigation }: { navigation: any }) {
       Alert.alert('Address required', 'Please select or add a shipping address.');
       return;
     }
+    const paystackEmail = String(user.email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(paystackEmail)) {
+      Alert.alert('Email required', 'A valid account email is required to process payment. Please sign out and sign in again.');
+      return;
+    }
     setPaying(true);
     try {
       const orderRef = `AHG-${Date.now()}`;
@@ -302,7 +306,7 @@ export default function Checkout({ navigation }: { navigation: any }) {
       setPaystackHtml(
         buildPaystackInlineHtml({
           publicKey,
-          email: user.email || '',
+          email: paystackEmail,
           amountKobo: Math.round(grandTotal * 100),
           reference,
           accessCode: accessCode || undefined,
