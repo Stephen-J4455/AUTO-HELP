@@ -1,10 +1,23 @@
 import React from 'react';
-import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Animated,
+  Dimensions,
+  FlatList,
+  Image,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme';
 import { supabase } from '../supabase/supabase';
 import { getProductImageUri } from '../utils/productImages';
 import { formatCedis } from '../utils/currency';
+
+const VEHICLE_IMAGES_BUCKET = 'vehicle-images';
+const { width } = Dimensions.get('window');
 
 type Product = {
   id: string;
@@ -13,6 +26,16 @@ type Product = {
   brand: string | null;
   price: number;
   imageUri: string | null;
+};
+
+type VehicleInfo = {
+  image: string | null;
+  trim: string | null;
+  engine: string | null;
+  body_type: string | null;
+  fuel_type: string | null;
+  transmission: string | null;
+  drivetrain: string | null;
 };
 
 function normalizeText(value: unknown): string {
@@ -24,37 +47,68 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function toPublicImageUrl(path: string): string {
+  if (/^https?:\/\//.test(path)) return path;
+  const { data } = supabase.storage.from(VEHICLE_IMAGES_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
 export default function VehicleParts({ route, navigation }: { route: any; navigation: any }) {
   const { colors } = useTheme();
   const vehicleId = route?.params?.vehicleId as string | undefined;
   const vehicleMake = route?.params?.vehicleMake as string | undefined;
   const vehicleModel = route?.params?.vehicleModel as string | undefined;
   const vehicleYear = route?.params?.vehicleYear as number | undefined;
+  const vehicleYearTo = route?.params?.vehicleYearTo as number | undefined;
   const vehicleName = (route?.params?.vehicleName as string | undefined) || 'Vehicle Parts';
   const [loading, setLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
   const [products, setProducts] = React.useState<Product[]>([]);
+  const [vehicle, setVehicle] = React.useState<VehicleInfo | null>(null);
+  const shimmer = React.useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
-    navigation?.setOptions?.({ title: vehicleName });
+    navigation?.setOptions?.({ title: vehicleName, headerShown: false });
   }, [navigation, vehicleName]);
 
   React.useEffect(() => {
-    let mounted = true;
-    async function loadProducts() {
-      if (!vehicleId) {
-        setLoading(false);
-        return;
-      }
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0.3, duration: 700, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [shimmer]);
 
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, title, sku, brand, price, images, fitments')
-        .order('created_at', { ascending: false })
-        .limit(200);
+  const loadData = React.useCallback(async () => {
+    if (!vehicleId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const [{ data: vehicleData, error: vehicleError }, { data, error }] = await Promise.all([
+        supabase
+          .from('vehicles')
+          .select('image, trim, engine, body_type, fuel_type, transmission, drivetrain')
+          .eq('id', vehicleId)
+          .maybeSingle(),
+        supabase
+          .from('products')
+          .select('id, title, sku, brand, price, images, fitments')
+          .order('created_at', { ascending: false })
+          .limit(200),
+      ]);
+
+      if (vehicleError) {
+        console.warn('Failed to load vehicle', vehicleError.message);
+      } else if (vehicleData) {
+        setVehicle(vehicleData as VehicleInfo);
+      }
 
       if (error) {
         console.warn('Failed to load vehicle parts', error.message);
-      } else if (mounted && data) {
+      } else if (data) {
         const normalizedMake = normalizeText(vehicleMake);
         const normalizedModel = normalizeText(vehicleModel);
         const normalizedYear = toNumber(vehicleYear);
@@ -96,112 +150,309 @@ export default function VehicleParts({ route, navigation }: { route: any; naviga
           }))
         );
       }
-
-      if (mounted) setLoading(false);
+    } catch (error) {
+      console.warn('Failed to load vehicle parts', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
+  }, [vehicleId, vehicleMake, vehicleModel, vehicleYear]);
 
-    void loadProducts();
-    return () => {
-      mounted = false;
-    };
-  }, [vehicleId]);
+  React.useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const yearLabel = vehicleYearTo ? `${vehicleYear}-${vehicleYearTo}` : String(vehicleYear ?? '');
+  const specChips = [vehicle?.body_type, vehicle?.fuel_type, vehicle?.transmission, vehicle?.drivetrain, vehicle?.engine]
+    .filter((v): v is string => Boolean(v))
+    .slice(0, 4);
+
+  const renderHero = () => (
+    <View style={[styles.hero, { backgroundColor: colors.surface }]}>
+      <View style={[styles.heroImageWrap, { backgroundColor: colors.surface }]}>
+        {vehicle?.image ? (
+          <Image source={{ uri: toPublicImageUrl(vehicle.image) }} style={styles.heroImage} />
+        ) : (
+          <Ionicons name="car-sport-outline" size={48} color={colors.muted} />
+        )}
+        <TouchableOpacity
+          style={[styles.backBtn, { backgroundColor: colors.surface }]}
+          activeOpacity={0.8}
+          onPress={() => navigation?.goBack()}
+        >
+          <Ionicons name="chevron-back" size={22} color={colors.text} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.heroBody}>
+        <View style={styles.heroTopRow}>
+          {yearLabel ? (
+            <View style={[styles.yearBadge, { backgroundColor: colors.primary }]}>
+              <Text style={styles.yearBadgeText}>{yearLabel}</Text>
+            </View>
+          ) : null}
+          <Text style={[styles.heroTitle, { color: colors.text }]} numberOfLines={1}>
+            {vehicleMake} {vehicleModel}
+          </Text>
+        </View>
+        {vehicle?.trim ? (
+          <Text style={[styles.heroTrim, { color: colors.muted }]} numberOfLines={1}>
+            {vehicle.trim}
+          </Text>
+        ) : null}
+
+        {specChips.length > 0 && (
+          <View style={styles.heroChips}>
+            {specChips.map((chip, idx) => (
+              <View key={idx} style={[styles.heroChip, { backgroundColor: colors.background }]}>
+                <Text style={[styles.heroChipText, { color: colors.muted }]} numberOfLines={1}>
+                  {chip}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+
+  const renderProduct = ({ item }: { item: Product }) => (
+    <TouchableOpacity
+      style={[styles.productCard, { backgroundColor: colors.surface }]}
+      activeOpacity={0.86}
+      onPress={() => navigation?.navigate?.('ProductDetails', { productId: item.id })}
+    >
+      <View style={[styles.productImageWrap, { backgroundColor: colors.background }]}>
+        {item.imageUri ? (
+          <Image source={{ uri: item.imageUri }} style={styles.productImage} />
+        ) : (
+          <Ionicons name="cube-outline" size={26} color={colors.muted} />
+        )}
+      </View>
+      <View style={styles.productBody}>
+        {item.brand ? (
+          <Text style={[styles.brand, { color: colors.primary }]} numberOfLines={1}>
+            {item.brand}
+          </Text>
+        ) : null}
+        <Text style={[styles.productTitle, { color: colors.text }]} numberOfLines={2}>
+          {item.title}
+        </Text>
+        <View style={styles.productFooter}>
+          <Text style={[styles.price, { color: colors.primary }]}>{formatCedis(item.price)}</Text>
+          {item.sku ? (
+            <Text style={[styles.sku, { color: colors.muted }]} numberOfLines={1}>
+              {item.sku}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderProductSkeleton = () => (
+    <Animated.View style={[styles.productCard, { opacity: shimmer }]}>
+      <View style={[styles.productImageWrap, { backgroundColor: colors.background }]} />
+      <View style={styles.productBody}>
+        <View style={[styles.skeletonLine, { backgroundColor: colors.background, width: '40%' }]} />
+        <View style={[styles.skeletonLine, { backgroundColor: colors.background, width: '80%' }]} />
+      </View>
+    </Animated.View>
+  );
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {renderHero()}
+        <View style={styles.grid}>
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <React.Fragment key={idx}>{renderProductSkeleton()}</React.Fragment>
+          ))}
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <FlatList
-        data={products}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.card, { backgroundColor: colors.surface }]}
-            activeOpacity={0.86}
-            onPress={() => navigation?.navigate?.('ProductDetails', { productId: item.id })}
-          >
-            {item.imageUri ? (
-              <Image source={{ uri: item.imageUri }} style={styles.image} />
-            ) : (
-              <View style={[styles.image, styles.placeholder, { backgroundColor: colors.background }]}>
-                <Ionicons name="cube-outline" size={26} color={colors.muted} />
-              </View>
-            )}
-            <View style={styles.cardBody}>
-              {item.brand ? (
-                <Text style={[styles.brand, { color: colors.primary }]} numberOfLines={1}>
-                  {item.brand}
-                </Text>
-              ) : null}
-              <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
-                {item.title}
-              </Text>
-              <Text style={[styles.sku, { color: colors.muted }]} numberOfLines={1}>
-                SKU: {item.sku || 'N/A'}
-              </Text>
-              <Text style={[styles.price, { color: colors.primary }]}>{formatCedis(item.price)}</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-        ListEmptyComponent={
-          <View style={styles.emptyWrap}>
-            <Ionicons name="cube-outline" size={42} color={colors.muted} />
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>No parts found</Text>
-            <Text style={[styles.emptySub, { color: colors.muted }]}>No products are linked to this vehicle yet.</Text>
-          </View>
-        }
-      />
-    </View>
+    <FlatList
+      style={[styles.container, { backgroundColor: colors.background }]}
+      contentContainerStyle={styles.list}
+      data={products}
+      keyExtractor={(item) => item.id}
+      numColumns={2}
+      columnWrapperStyle={styles.column}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            void loadData();
+          }}
+          tintColor={colors.primary}
+        />
+      }
+      ListHeaderComponent={renderHero}
+      renderItem={renderProduct}
+      ListEmptyComponent={
+        <View style={styles.emptyWrap}>
+          <Ionicons name="cube-outline" size={42} color={colors.muted} />
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>No parts found</Text>
+          <Text style={[styles.emptySub, { color: colors.muted }]}>
+            No products are linked to this vehicle yet.
+          </Text>
+        </View>
+      }
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 , paddingTop: 30},
-  center: { justifyContent: 'center', alignItems: 'center' },
-  list: { padding: 16, paddingBottom: 24, gap: 12 },
-  card: {
+  container: { flex: 1 },
+  list: { paddingHorizontal: 14, paddingBottom: 120, gap: 12 },
+  column: { gap: 12 },
+  hero: {
+    marginHorizontal: -14,
+    marginBottom: 16,
+    borderRadius: 18,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  heroImageWrap: {
+    width: '100%',
+    height: 210,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  backBtn: {
+    position: 'absolute',
+    top: 44,
+    left: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  heroBody: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 8,
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  yearBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  yearBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
+  heroTitle: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+  },
+  heroTrim: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  heroChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  heroChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  heroChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 14,
+    paddingBottom: 120,
+    gap: 12,
+  },
+  productCard: {
+    width: (width - 42) / 2,
     borderRadius: 16,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  image: {
+  productImageWrap: {
     width: '100%',
-    height: 170,
-  },
-  placeholder: {
+    height: 120,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardBody: {
-    padding: 12,
-    gap: 6,
+  productImage: {
+    width: '100%',
+    height: '100%',
+  },
+  productBody: {
+    padding: 10,
+    gap: 4,
   },
   brand: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     textTransform: 'uppercase',
   },
-  title: {
-    fontSize: 15,
+  productTitle: {
+    fontSize: 13,
     fontWeight: '800',
+    minHeight: 34,
   },
-  sku: {
-    fontSize: 12,
-    fontWeight: '600',
+  productFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 6,
   },
   price: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
-    marginTop: 2,
+  },
+  sku: {
+    fontSize: 10,
+    fontWeight: '600',
   },
   emptyWrap: {
     marginTop: 80,
     alignItems: 'center',
+    paddingHorizontal: 32,
   },
   emptyTitle: {
     marginTop: 10,
@@ -213,5 +464,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  skeletonLine: {
+    height: 12,
+    borderRadius: 6,
+    marginBottom: 8,
   },
 });

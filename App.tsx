@@ -24,57 +24,93 @@ import { AuthProvider, useAuth } from './src/context/Auth';
 import { storage } from './src/utils/storage';
 import { CartProvider } from './src/context/Cart';
 import { CategoryProvider } from './src/context/Categories';
+import { AppAlertProvider } from './src/components/AppAlert';
 
 const Stack = createNativeStackNavigator();
 
 function AppLoadingScreen() {
   const { colors } = useTheme();
+  const spin = React.useRef(new Animated.Value(0)).current;
   const pulse = React.useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 1400,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    ).start();
+
+    Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, {
           toValue: 1,
-          duration: 900,
+          duration: 800,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
         Animated.timing(pulse, {
-          toValue: 0,
-          duration: 900,
+          toValue: 0.4,
+          duration: 800,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
       ])
     ).start();
-  }, [pulse]);
+  }, [spin, pulse]);
 
-  const scale = pulse.interpolate({
+  const rotate = spin.interpolate({
     inputRange: [0, 1],
-    outputRange: [1, 1.08],
+    outputRange: ['0deg', '360deg'],
   });
-  const opacity = pulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.55, 1],
+  const scale = pulse.interpolate({
+    inputRange: [0.4, 1],
+    outputRange: [0.96, 1.04],
   });
 
   return (
     <View style={[loaderStyles.container, { backgroundColor: colors.background }]}>
-      <Animated.View
-        style={[
-          loaderStyles.logoWrap,
-          {
-            backgroundColor: `${colors.primary}20`,
-            transform: [{ scale }],
-            opacity,
-          },
-        ]}
-      >
-        <Image source={require('./assets/icon.png')} style={loaderStyles.logoImage} resizeMode="contain" />
-      </Animated.View>
+      <View style={[loaderStyles.brandRow, { backgroundColor: colors.surface }]}>
+        <Text style={[loaderStyles.brand, { color: colors.text }]}>AUTO HELP</Text>
+        <View style={[loaderStyles.brandBadge, { backgroundColor: colors.primary }]}>
+          <Text style={loaderStyles.brandBadgeText}>GH</Text>
+        </View>
+      </View>
+
+      <View style={loaderStyles.logoWrap}>
+        <Animated.View
+          style={[
+            loaderStyles.ring,
+            { borderColor: `${colors.primary}33`, borderTopColor: colors.primary, transform: [{ rotate }] },
+          ]}
+        />
+        <Animated.View
+          style={[
+            loaderStyles.innerGlow,
+            { backgroundColor: `${colors.primary}20`, transform: [{ scale }] },
+          ]}
+        >
+          <Image
+            source={require('./assets/icon.png')}
+            style={loaderStyles.logoImage}
+            resizeMode="contain"
+          />
+        </Animated.View>
+      </View>
+
       <Text style={[loaderStyles.title, { color: colors.text }]}>AUTO HELP GH</Text>
-      <Text style={[loaderStyles.subtitle, { color: colors.muted }]}>Loading app...</Text>
+      <Text style={[loaderStyles.subtitle, { color: colors.muted }]}>
+        Trusted auto parts marketplace
+      </Text>
+
+      <View style={[loaderStyles.progressTrack, { backgroundColor: `${colors.primary}1F` }]}>
+        <Animated.View
+          style={[loaderStyles.progressBar, { backgroundColor: colors.primary, transform: [{ scaleX: pulse }] }]}
+        />
+      </View>
+      <Text style={[loaderStyles.loadingText, { color: colors.muted }]}>Loading app…</Text>
     </View>
   );
 }
@@ -125,20 +161,7 @@ function AppContent() {
     );
   }
 
-  // If not logged in, show auth screen
-  if (!session) {
-    return (
-      <SafeAreaProvider>
-        <NavigationContainer>
-          <Stack.Navigator>
-            <Stack.Screen name="AuthScreen" component={AuthScreen} options={{headerShown: false}}/>
-          </Stack.Navigator>
-        </NavigationContainer>
-        <StatusBar style="dark" />
-      </SafeAreaProvider>
-    );
-  }
-
+  // Content is shown to everyone; the Account screen handles the logged-out state.
   const routes = [
     { key: 'home', label: 'Home', icon: 'home', component: Home },
     { key: 'search', label: 'Search', icon: 'search', component: Search },
@@ -162,6 +185,7 @@ function AppContent() {
           <Stack.Screen name="Orders" component={Orders} options={{ title: 'My Orders' }} />
           <Stack.Screen name="OrderDetails" component={OrderDetails} options={{ headerShown: false }} />
           <Stack.Screen name="Checkout" component={Checkout} options={{ title: 'Checkout' }} />
+          <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
       <StatusBar style="dark" />
@@ -171,13 +195,15 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <CategoryProvider>
-        <CartProvider>
-          <AppContent />
-        </CartProvider>
-      </CategoryProvider>
-    </AuthProvider>
+    <AppAlertProvider>
+      <AuthProvider>
+        <CategoryProvider>
+          <CartProvider>
+            <AppContent />
+          </CartProvider>
+        </CategoryProvider>
+      </AuthProvider>
+    </AppAlertProvider>
   );
 }
 
@@ -186,26 +212,88 @@ const loaderStyles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    paddingHorizontal: 40,
+    gap: 16,
+  },
+  brandRow: {
+    position: 'absolute',
+    top: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  brand: {
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
+  brandBadge: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  brandBadgeText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '900',
   },
   logoWrap: {
-    width: 78,
-    height: 78,
-    borderRadius: 39,
+    width: 132,
+    height: 132,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  ring: {
+    position: 'absolute',
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    borderWidth: 4,
+  },
+  innerGlow: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
     alignItems: 'center',
     justifyContent: 'center',
   },
   logoImage: {
-   
+    width: 72,
+    height: 72,
     borderRadius: 50,
   },
   title: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '900',
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
+  },
+  progressTrack: {
+    width: '70%',
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  progressBar: {
+    flex: 1,
+    borderRadius: 3,
+  },
+  loadingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
 });

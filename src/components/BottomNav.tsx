@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute } from '@react-navigation/native';
+import { useCart } from '../context/Cart';
 
 type Route = {
   key: string;
@@ -19,6 +20,8 @@ export default function BottomNav({ routes, navigation }: { routes: Route[]; nav
   const insets = useSafeAreaInsets();
   const route = useRoute<any>();
   const indicatorX = React.useRef(new Animated.Value(0)).current;
+  const { items: cartItems } = useCart();
+  const cartCount = cartItems.reduce((sum, it) => sum + (it.quantity || 0), 0);
 
   const activeIndex = React.useMemo(
     () => Math.max(0, routes.findIndex((item) => item.key === active)),
@@ -90,7 +93,9 @@ export default function BottomNav({ routes, navigation }: { routes: Route[]; nav
               },
             ]}
           />
-          {routes.map((r) => (
+          {routes.map((r) => {
+            const showBadge = r.key === 'cart' && cartCount > 0;
+            return (
             <TouchableOpacity
               key={r.key}
               onPress={() => setActive(r.key)}
@@ -99,18 +104,26 @@ export default function BottomNav({ routes, navigation }: { routes: Route[]; nav
             >
               {r.icon ? (
               <View style={styles.tabInner}>
-                <Ionicons
-                  name={r.icon as any}
-                  size={18}
-                  color={active === r.key ? '#fff' : colors.muted}
-                />
+                <View>
+                  <Ionicons
+                    name={r.icon as any}
+                    size={18}
+                    color={active === r.key ? '#fff' : colors.muted}
+                  />
+                  {showBadge ? (
+                    <View style={[styles.badge, { backgroundColor: colors.primary, borderColor: colors.background }]}>
+                      <Text style={styles.badgeText}>{cartCount > 99 ? '99+' : String(cartCount)}</Text>
+                    </View>
+                  ) : null}
+                </View>
                 <Text style={[styles.tabLabel, { color: active === r.key ? '#fff' : colors.muted }]}>
                   {r.label}
                 </Text>
               </View>
               ) : null}
             </TouchableOpacity>
-          ))}
+          );
+          })}
         </View>
       </View>
     </View>
@@ -160,4 +173,17 @@ const styles = StyleSheet.create({
   },
   tabInner: { alignItems: 'center', justifyContent: 'center', gap: 3 },
   tabLabel: { fontSize: 11, fontWeight: '800' },
+  badge: {
+    position: 'absolute',
+    top: -6,
+    right: -10,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+  },
+  badgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
 });

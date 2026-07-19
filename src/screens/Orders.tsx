@@ -19,7 +19,7 @@ type OrderRow = {
   total_amount: number;
   currency: string | null;
   created_at: string;
-  item_count?: number | null;
+  order_items?: { count: number }[] | null;
 };
 
 const STATUS_META: Record<string, { label: string; icon: string; color: string }> = {
@@ -52,7 +52,7 @@ export default function Orders({ navigation }: { navigation: any }) {
 
       const { data, error } = await supabase
         .from('orders')
-        .select('id, status, total_amount, currency, created_at, item_count')
+        .select('id, status, total_amount, currency, created_at, order_items(count)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -124,7 +124,10 @@ export default function Orders({ navigation }: { navigation: any }) {
 
               <View style={styles.cardBottom}>
                 <Text style={[styles.items, { color: colors.muted }]}>
-                  {item.item_count ? `${item.item_count} item${item.item_count > 1 ? 's' : ''}` : 'Items'}
+                  {(() => {
+                    const count = item.order_items?.[0]?.count ?? 0;
+                    return count ? `${count} item${count > 1 ? 's' : ''}` : 'Items';
+                  })()}
                 </Text>
                 <View style={styles.amountRow}>
                   <Text style={[styles.amount, { color: colors.text }]}>

@@ -1,15 +1,24 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable, Image, TextInput, ImageBackground, Platform, Alert, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Pressable, Image, TextInput, ImageBackground, Platform, ActivityIndicator } from "react-native";
 import { useTheme } from "../theme";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/Auth";
+import { useNavigation, useRoute } from "@react-navigation/native";
+import { useAppAlert } from "../components/AppAlert";
 
 
 export default function AuthScreen() {
   const { colors } = useTheme();
   const { signIn, signUp, loading } = useAuth();
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const { show: showAlert } = useAppAlert();
 
-  const [isLogin, setIsLogin] = React.useState(true);
+  const handleAuthSuccess = () => {
+    navigation.goBack();
+  };
+
+  const [isLogin, setIsLogin] = React.useState(route.params?.initialMode !== "signup");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [username, setUsername] = React.useState("");
@@ -25,36 +34,37 @@ export default function AuthScreen() {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert("Error", "Please fill in all fields");
+      showAlert({ title: "Error", message: "Please fill in all fields" });
       return;
     }
     setAuthLoading(true);
     const { error } = await signIn(email, password);
     setAuthLoading(false);
     if (error) {
-      Alert.alert("Login Failed", error);
+      showAlert({ title: "Login Failed", message: error });
     } else {
       setEmail("");
       setPassword("");
+      handleAuthSuccess();
     }
   };
 
   const handleSignUp = async () => {
     if (!email || !password || !username) {
-      Alert.alert("Error", "Please fill in all fields");
+      showAlert({ title: "Error", message: "Please fill in all fields" });
       return;
     }
     if (password.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters");
+      showAlert({ title: "Error", message: "Password must be at least 6 characters" });
       return;
     }
     setAuthLoading(true);
     const { error } = await signUp(email, password, username);
     setAuthLoading(false);
     if (error) {
-      Alert.alert("Sign Up Failed", error);
+      showAlert({ title: "Sign Up Failed", message: error });
     } else {
-      Alert.alert("Success", "Account created! Please check your email to confirm.");
+      showAlert({ title: "Success", message: "Account created! Please check your email to confirm." });
       setIsLogin(true);
       setEmail("");
       setPassword("");

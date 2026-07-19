@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Modal,
@@ -16,6 +15,7 @@ import { useTheme } from '../theme';
 import { useCart } from '../context/Cart';
 import { useAuth } from '../context/Auth';
 import { supabase } from '../supabase/supabase';
+import { useAppAlert } from '../components/AppAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { formatCedis } from '../utils/currency';
 import { WebView } from 'react-native-webview';
@@ -109,6 +109,7 @@ function buildPaystackInlineHtml({
 export default function Checkout({ navigation }: { navigation: any }) {
   const { colors } = useTheme();
   const { user } = useAuth();
+  const { show: showAlert } = useAppAlert();
   const { items, total, clear } = useCart();
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
@@ -158,7 +159,7 @@ export default function Checkout({ navigation }: { navigation: any }) {
   async function handleSaveAddress() {
     if (!user?.id) return;
     if (!fullName.trim() || !phone.trim() || !street.trim() || !city.trim() || !stateRegion.trim()) {
-      Alert.alert('Address required', 'Please fill all address fields.');
+      showAlert({ title: 'Address required', message: 'Please fill all address fields.' });
       return;
     }
 
@@ -177,7 +178,7 @@ export default function Checkout({ navigation }: { navigation: any }) {
         .eq('id', editingAddressId);
       
       if (error) {
-        Alert.alert('Update failed', error.message);
+        showAlert({ title: 'Update failed', message: error.message });
         return;
       }
       
@@ -203,7 +204,7 @@ export default function Checkout({ navigation }: { navigation: any }) {
         .select('id, full_name, phone, street, city, state, country, is_default')
         .single();
       if (error) {
-        Alert.alert('Save failed', error.message);
+        showAlert({ title: 'Save failed', message: error.message });
         return;
       }
       const next = [data as Address, ...addresses];
@@ -237,7 +238,7 @@ export default function Checkout({ navigation }: { navigation: any }) {
     if (!user?.id) return;
     const { error: resetError } = await supabase.from('user_addresses').update({ is_default: false }).eq('user_id', user.id);
     if (resetError) {
-      Alert.alert('Address error', resetError.message);
+      showAlert({ title: 'Address error', message: resetError.message });
       return;
     }
     const { error } = await supabase
@@ -246,7 +247,7 @@ export default function Checkout({ navigation }: { navigation: any }) {
       .eq('user_id', user.id)
       .eq('id', addressId);
     if (error) {
-      Alert.alert('Address error', error.message);
+      showAlert({ title: 'Address error', message: error.message });
       return;
     }
     setAddresses((prev) => prev.map((a) => ({ ...a, is_default: a.id === addressId })));
@@ -256,17 +257,17 @@ export default function Checkout({ navigation }: { navigation: any }) {
   async function startPaystackCheckout() {
     if (!user?.id) return;
     if (!items.length) {
-      Alert.alert('Cart empty', 'Add products to cart before checkout.');
+      showAlert({ title: 'Cart empty', message: 'Add products to cart before checkout.' });
       return;
     }
     const selectedAddress = addresses.find((address) => address.id === selectedAddressId);
     if (!selectedAddress) {
-      Alert.alert('Address required', 'Please select or add a shipping address.');
+      showAlert({ title: 'Address required', message: 'Please select or add a shipping address.' });
       return;
     }
     const paystackEmail = String(user.email || '').trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(paystackEmail)) {
-      Alert.alert('Email required', 'A valid account email is required to process payment. Please sign out and sign in again.');
+      showAlert({ title: 'Email required', message: 'A valid account email is required to process payment. Please sign out and sign in again.' });
       return;
     }
     setPaying(true);
@@ -313,7 +314,7 @@ export default function Checkout({ navigation }: { navigation: any }) {
         })
       );
     } catch (error) {
-      Alert.alert('Checkout failed', error instanceof Error ? error.message : 'Could not start checkout');
+      showAlert({ title: 'Checkout failed', message: error instanceof Error ? error.message : 'Could not start checkout' });
     } finally {
       setPaying(false);
     }
@@ -335,7 +336,7 @@ export default function Checkout({ navigation }: { navigation: any }) {
 
     if (payload.type === 'error') {
       setPaystackHtml(null);
-      Alert.alert('Payment error', payload.message || 'Unable to initialize Paystack payment.');
+      showAlert({ title: 'Payment error', message: payload.message || 'Unable to initialize Paystack payment.' });
       return;
     }
 
@@ -359,10 +360,10 @@ export default function Checkout({ navigation }: { navigation: any }) {
 
       await clear();
       setPendingPayment(null);
-      Alert.alert('Payment successful', 'Your order has been placed successfully.');
+      showAlert({ title: 'Payment successful', message: 'Your order has been placed successfully.' });
       navigation.navigate('Orders');
     } catch (error) {
-      Alert.alert('Verification failed', error instanceof Error ? error.message : 'Could not verify payment.');
+      showAlert({ title: 'Verification failed', message: error instanceof Error ? error.message : 'Could not verify payment.' });
     } finally {
       setVerifyingPayment(false);
     }

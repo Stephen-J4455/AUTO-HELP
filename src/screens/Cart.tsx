@@ -1,13 +1,15 @@
 import React from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTheme } from '../theme';
 import { useCart } from '../context/Cart';
+import { useAppAlert } from '../components/AppAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { formatCedis } from '../utils/currency';
 
 export default function Cart({ navigateTo }: { navigateTo?: (name: string, params?: any) => void }) {
   const { colors } = useTheme();
   const { items, loading, updateQuantity, removeItem, clear, total } = useCart();
+  const { show: showAlert } = useAppAlert();
 
   const subtotal = total;
   const deliveryFee = items.length ? 6.5 : 0;
@@ -17,7 +19,7 @@ export default function Cart({ navigateTo }: { navigateTo?: (name: string, param
     try {
       await clear();
     } catch (error) {
-      Alert.alert('Cart error', error instanceof Error ? error.message : 'Could not clear cart.');
+      showAlert({ title: 'Cart error', message: error instanceof Error ? error.message : 'Could not clear cart.' });
     }
   }
 

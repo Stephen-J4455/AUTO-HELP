@@ -2,6 +2,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   StyleSheet,
   Text,
   View,
@@ -13,6 +14,7 @@ import { useTheme } from '../theme';
 import { useAuth } from '../context/Auth';
 import { supabase } from '../supabase/supabase';
 import { formatCedis } from '../utils/currency';
+import { getProductImageUri } from '../utils/productImages';
 
 type OrderItem = {
   id: string;
@@ -61,12 +63,8 @@ function firstImage(images: unknown): string | null {
   if (Array.isArray(images) && images.length > 0) {
     const first = images[0];
     if (typeof first === 'string') return first;
-    if (first && typeof first === 'object' && 'path' in first) {
-      const p = (first as { path?: string }).path;
-      if (p) return p.startsWith('http') ? p : `https://${p}`;
-    }
   }
-  return null;
+  return getProductImageUri(images);
 }
 
 export default function OrderDetails({ route, navigation }: { route: any; navigation: any }) {
@@ -208,8 +206,11 @@ export default function OrderDetails({ route, navigation }: { route: any; naviga
               <View style={[styles.itemRow, { borderColor: colors.background }]}>
                 <View style={[styles.itemThumb, { backgroundColor: colors.background }]}>
                   {item.image_url ? (
-                    // eslint-disable-next-line react-native/no-inline-styles
-                    <Text style={{ fontSize: 0 }}>{''}</Text>
+                    <Image
+                      source={{ uri: item.image_url }}
+                      style={styles.itemThumbImg}
+                      resizeMode="cover"
+                    />
                   ) : (
                     <Ionicons name="cube-outline" size={22} color={colors.muted} />
                   )}
@@ -282,7 +283,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 44,
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
@@ -335,6 +336,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  itemThumbImg: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
   },
   itemTitle: { fontSize: 14, fontWeight: '700' },
   itemSku: { fontSize: 12, fontWeight: '600', marginTop: 2 },

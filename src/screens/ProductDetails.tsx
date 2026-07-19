@@ -7,7 +7,6 @@ import {
   Image,
   TouchableOpacity,
   ScrollView,
-  Alert,
   Dimensions,
   FlatList,
   Modal,
@@ -19,6 +18,7 @@ import { useTheme } from '../theme';
 import { supabase } from '../supabase/supabase';
 import { useCart } from '../context/Cart';
 import { useAuth } from '../context/Auth';
+import { useAppAlert } from '../components/AppAlert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getProductImageUri, toPublicProductImageUrl } from '../utils/productImages';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -41,6 +41,7 @@ export default function ProductDetails({ route, navigation }: any) {
   const [reviewForm, setReviewForm] = useState({ rating: 5, body: '' });
   const [submitting, setSubmitting] = useState(false);
   const { addItem } = useCart();
+  const { show: showAlert } = useAppAlert();
   const modalStartY = useRef(0);
 
   useEffect(() => {
@@ -108,7 +109,7 @@ export default function ProductDetails({ route, navigation }: any) {
 
   const handleToggleLike = async () => {
     if (!user) {
-      Alert.alert('Please log in', 'You need to be logged in to like products.');
+      showAlert({ title: 'Please log in', message: 'You need to be logged in to like products.' });
       return;
     }
 
@@ -123,7 +124,7 @@ export default function ProductDetails({ route, navigation }: any) {
       setLikeCount(data?.count || 0);
     } catch (error) {
       console.error('Error toggling like:', error);
-      Alert.alert('Error', 'Failed to update like');
+      showAlert({ title: 'Error', message: 'Failed to update like' });
     }
   };
 
@@ -142,12 +143,12 @@ export default function ProductDetails({ route, navigation }: any) {
 
   const handleSubmitReview = async () => {
     if (!user) {
-      Alert.alert('Please log in', 'You need to be logged in to leave a review.');
+      showAlert({ title: 'Please log in', message: 'You need to be logged in to leave a review.' });
       return;
     }
 
     if (!reviewForm.body.trim()) {
-      Alert.alert('Missing review', 'Please write your review.');
+      showAlert({ title: 'Missing review', message: 'Please write your review.' });
       return;
     }
 
@@ -168,7 +169,7 @@ export default function ProductDetails({ route, navigation }: any) {
         throw new Error(data.error);
       }
 
-      Alert.alert('Success', 'Your review has been published!');
+      showAlert({ title: 'Success', message: 'Your review has been published!' });
       setReviewForm({ rating: 5, body: '' });
       setReviewModalVisible(false);
       
@@ -183,7 +184,7 @@ export default function ProductDetails({ route, navigation }: any) {
       if (newReviews) setReviews(newReviews);
     } catch (error) {
       console.error('Full error:', error);
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to submit review. Please try again.');
+      showAlert({ title: 'Error', message: error instanceof Error ? error.message : 'Failed to submit review. Please try again.' });
     } finally {
       setSubmitting(false);
     }
@@ -359,7 +360,7 @@ export default function ProductDetails({ route, navigation }: any) {
               );
               navigation?.navigate('Main', { tab: 'cart' });
             } catch (error) {
-              Alert.alert('Cart error', error instanceof Error ? error.message : 'Could not add to cart.');
+              showAlert({ title: 'Cart error', message: error instanceof Error ? error.message : 'Could not add to cart.' });
             }
           }}
         >
@@ -382,7 +383,7 @@ export default function ProductDetails({ route, navigation }: any) {
               );
               navigation?.navigate('Checkout');
             } catch (error) {
-              Alert.alert('Checkout error', error instanceof Error ? error.message : 'Could not continue to checkout.');
+              showAlert({ title: 'Checkout error', message: error instanceof Error ? error.message : 'Could not continue to checkout.' });
             }
           }}
         >
