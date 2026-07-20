@@ -17,7 +17,7 @@ import VehicleParts from './src/screens/VehicleParts';
 import BottomNav from './src/components/BottomNav';
 import { useTheme } from './src/theme';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AuthScreen from './src/screens/AuthScreen';
 import { AuthProvider, useAuth } from './src/context/Auth';
@@ -25,6 +25,7 @@ import { storage } from './src/utils/storage';
 import { CartProvider } from './src/context/Cart';
 import { CategoryProvider } from './src/context/Categories';
 import { AppAlertProvider } from './src/components/AppAlert';
+import { addPushNotificationListeners, registerAndSaveToken } from './src/utils/pushNotifications';
 
 const Stack = createNativeStackNavigator();
 
@@ -115,6 +116,30 @@ function AppLoadingScreen() {
   );
 }
 
+/**
+ * Registers the device for push notifications once a user is signed in, and
+ * deep-links to the Notifications screen when a notification is tapped.
+ */
+function PushInit() {
+  const { user } = useAuth();
+  const navigation = useNavigation<any>();
+
+  React.useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    (async () => {
+      await registerAndSaveToken(user?.id);
+      cleanup = addPushNotificationListeners(() => {
+        navigation.navigate('Notifications');
+      });
+    })();
+    return () => {
+      cleanup?.();
+    };
+  }, [user?.id, navigation]);
+
+  return null;
+}
+
 function AppContent() {
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [onboardingLoaded, setOnboardingLoaded] = useState(false);
@@ -173,6 +198,7 @@ function AppContent() {
   return (
     <SafeAreaProvider>
       <NavigationContainer> 
+        <PushInit />
         <Stack.Navigator>
           <Stack.Screen name="Main" options={{ headerShown: false }}>
             {({ navigation }) => <BottomNav routes={routes} navigation={navigation} />}

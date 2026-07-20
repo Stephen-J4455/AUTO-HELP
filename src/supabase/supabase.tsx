@@ -13,3 +13,15 @@ export const supabase = createClient(supabase_url, supabase_public_key, {
     detectSessionInUrl: false,
   },
 });
+
+/**
+ * Returns the deep-link URL that Supabase OAuth providers should redirect back to.
+ * Uses the app's custom URL scheme (root) so the OS routes the callback into the
+ * app. We use the root scheme (not a sub-path) to match the proven CHAWP flow,
+ * which avoids mismatches between the registered redirect URL and the one
+ * Supabase actually calls back to.
+ */
+export const getRedirectUrl = (): string => {
+  const scheme = "autohelpgh";
+  return `${scheme}://`;
+};

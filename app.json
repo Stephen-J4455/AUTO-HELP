@@ -7,7 +7,8 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "apsEnvironment": "development"
     },
     "android": {
       "adaptiveIcon": {
@@ -17,15 +18,44 @@
         "monochromeImage": "./assets/icon.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.stephenj2.AUTOHELPGH"
+      "package": "com.stephenj.autohelpgh",
+      "googleServicesFile": "./google-services.json",
+      "useNextNotificationsApi": true,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "autohelpgh"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/icon.png"
     },
+    "scheme": "autohelpgh",
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#E6F4FE"
+    },
     "plugins": [
       "expo-font",
       "expo-splash-screen",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#E6F4FE"
+        }
+      ]
     ],
     "extra": {
       "eas": {

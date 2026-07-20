@@ -168,35 +168,39 @@ export default function VehicleParts({ route, navigation }: { route: any; naviga
     .slice(0, 4);
 
   const renderHero = () => (
-    <View style={[styles.hero, { backgroundColor: colors.surface }]}>
-      <View style={[styles.heroImageWrap, { backgroundColor: colors.surface }]}>
-        {vehicle?.image ? (
-          <Image source={{ uri: toPublicImageUrl(vehicle.image) }} style={styles.heroImage} />
-        ) : (
+    <View style={styles.hero}>
+      {vehicle?.image ? (
+        <Image source={{ uri: toPublicImageUrl(vehicle.image) }} style={styles.heroImage} />
+      ) : (
+        <View style={[styles.heroImageFallback, { backgroundColor: colors.surface }]}>
           <Ionicons name="car-sport-outline" size={48} color={colors.muted} />
-        )}
-        <TouchableOpacity
-          style={[styles.backBtn, { backgroundColor: colors.surface }]}
-          activeOpacity={0.8}
-          onPress={() => navigation?.goBack()}
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.text} />
-        </TouchableOpacity>
-      </View>
+        </View>
+      )}
 
-      <View style={styles.heroBody}>
+      {/* Gradient scrim for text legibility over the image */}
+      <View style={styles.heroScrim} pointerEvents="none" />
+
+      <TouchableOpacity
+        style={[styles.backBtn, { backgroundColor: 'rgba(0,0,0,0.35)' }]}
+        activeOpacity={0.8}
+        onPress={() => navigation?.goBack()}
+      >
+        <Ionicons name="chevron-back" size={22} color="#fff" />
+      </TouchableOpacity>
+
+      <View style={styles.heroOverlay}>
         <View style={styles.heroTopRow}>
           {yearLabel ? (
             <View style={[styles.yearBadge, { backgroundColor: colors.primary }]}>
               <Text style={styles.yearBadgeText}>{yearLabel}</Text>
             </View>
           ) : null}
-          <Text style={[styles.heroTitle, { color: colors.text }]} numberOfLines={1}>
+          <Text style={styles.heroTitle} numberOfLines={1}>
             {vehicleMake} {vehicleModel}
           </Text>
         </View>
         {vehicle?.trim ? (
-          <Text style={[styles.heroTrim, { color: colors.muted }]} numberOfLines={1}>
+          <Text style={styles.heroTrim} numberOfLines={1}>
             {vehicle.trim}
           </Text>
         ) : null}
@@ -204,8 +208,8 @@ export default function VehicleParts({ route, navigation }: { route: any; naviga
         {specChips.length > 0 && (
           <View style={styles.heroChips}>
             {specChips.map((chip, idx) => (
-              <View key={idx} style={[styles.heroChip, { backgroundColor: colors.background }]}>
-                <Text style={[styles.heroChipText, { color: colors.muted }]} numberOfLines={1}>
+              <View key={idx} style={styles.heroChip}>
+                <Text style={styles.heroChipText} numberOfLines={1}>
                   {chip}
                 </Text>
               </View>
@@ -315,22 +319,37 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderRadius: 18,
     overflow: 'hidden',
+    height: 260,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 10,
     elevation: 4,
   },
-  heroImageWrap: {
-    width: '100%',
-    height: 210,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
   heroImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
+  },
+  heroImageFallback: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroScrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   backBtn: {
     position: 'absolute',
@@ -347,9 +366,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
-  heroBody: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+  heroOverlay: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 16,
     gap: 8,
   },
   heroTopRow: {
@@ -373,10 +394,18 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     letterSpacing: 0.2,
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   heroTrim: {
     fontSize: 14,
     fontWeight: '700',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   heroChips: {
     flexDirection: 'row',
@@ -388,10 +417,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
   },
   heroChipText: {
     fontSize: 12,
     fontWeight: '700',
+    color: '#fff',
   },
   grid: {
     flexDirection: 'row',

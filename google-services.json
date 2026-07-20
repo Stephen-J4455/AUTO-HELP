@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1035207182617",
+    "project_id": "auto-help-gh",
+    "storage_bucket": "auto-help-gh.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1035207182617:android:82023d266a863538c79d88",
+        "android_client_info": {
+          "package_name": "com.stephenj.autohelpgh"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAzKfxprzX1ez-e-uTfyyDEnJuMH7d0aTg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

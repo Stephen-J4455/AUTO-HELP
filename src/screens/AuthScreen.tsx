@@ -9,7 +9,7 @@ import { useAppAlert } from "../components/AppAlert";
 
 export default function AuthScreen() {
   const { colors } = useTheme();
-  const { signIn, signUp, loading } = useAuth();
+  const { signIn, signUp, signInWithProvider, loading } = useAuth();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { show: showAlert } = useAppAlert();
@@ -69,6 +69,18 @@ export default function AuthScreen() {
       setEmail("");
       setPassword("");
       setUsername("");
+    }
+  };
+
+  const handleOAuth = async (provider: "google" | "apple") => {
+    setAuthLoading(true);
+    const { error } = await signInWithProvider(provider);
+    setAuthLoading(false);
+    if (error) {
+      showAlert({ title: "Sign In Failed", message: error });
+    } else {
+      // Provider sign-in succeeded (session is now active). Return to the app.
+      handleAuthSuccess();
     }
   };
 
@@ -136,14 +148,14 @@ export default function AuthScreen() {
                 )}
               </Pressable>
               <View style={{ flexDirection: "row", marginTop: 20 }}>
-                <Pressable style={{ marginHorizontal: 10 }}>
-                  <Ionicons name="logo-google" size={32} color={colors.muted} />
+                <Pressable style={{ marginHorizontal: 10 }} onPress={() => handleOAuth("google")}>
+                  <Ionicons name="logo-google" size={32} color={colors.primary} />
                 </Pressable>
-                <Pressable style={{ marginHorizontal: 10 }}>
-                  <Ionicons name="logo-facebook" size={32} color={colors.muted} />
+                <Pressable style={{ marginHorizontal: 10 }} disabled>
+                  <Ionicons name="logo-facebook" size={32} color={colors.primary} />
                 </Pressable>
-                <Pressable style={{ marginHorizontal: 10 }} disabled={!showAppleLogin}>
-                  <Ionicons name="logo-apple" size={32} color={colors.muted} />
+                <Pressable style={{ marginHorizontal: 10 }} disabled={!showAppleLogin} onPress={() => handleOAuth("apple")}>
+                  <Ionicons name="logo-apple" size={32} color={colors.primary} />
                 </Pressable>
               </View>
               <Pressable style={{ marginTop: 20 }} onPress={() => setIsLogin(false)}>
@@ -209,14 +221,14 @@ export default function AuthScreen() {
                 )}
               </Pressable>
               <View style={{ flexDirection: "row", marginTop: 20 }}>
-                <Pressable style={{ marginHorizontal: 10 }}>
-                  <Ionicons name="logo-google" size={32} color={colors.muted} />
+                <Pressable style={{ marginHorizontal: 10 }} onPress={() => handleOAuth("google")}>
+                  <Ionicons name="logo-google" size={32} color={colors.primary} />
                 </Pressable>
-                <Pressable style={{ marginHorizontal: 10 }}>
-                  <Ionicons name="logo-facebook" size={32} color={colors.muted} />
+                <Pressable style={{ marginHorizontal: 10 }} disabled>
+                  <Ionicons name="logo-facebook" size={32} color={colors.primary} />
                 </Pressable>
-                <Pressable style={{ marginHorizontal: 10 }} disabled={!showAppleLogin}>
-                  <Ionicons name="logo-apple" size={32} color={colors.muted} />
+                <Pressable style={{ marginHorizontal: 10 }} disabled={!showAppleLogin} onPress={() => handleOAuth("apple")}>
+                  <Ionicons name="logo-apple" size={32} color={colors.primary} />
                 </Pressable>
               </View>
               <Pressable style={{ marginTop: 20 }} onPress={() => setIsLogin(true)}>
