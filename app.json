@@ -7,8 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true,
-      "apsEnvironment": "development"
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
@@ -20,7 +19,6 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.stephenj.autohelpgh",
       "googleServicesFile": "./google-services.json",
-      "useNextNotificationsApi": true,
       "intentFilters": [
         {
           "action": "VIEW",
@@ -40,10 +38,6 @@
       "favicon": "./assets/icon.png"
     },
     "scheme": "autohelpgh",
-    "notification": {
-      "icon": "./assets/icon.png",
-      "color": "#E6F4FE"
-    },
     "plugins": [
       "expo-font",
       "expo-splash-screen",
@@ -53,7 +47,8 @@
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
-          "color": "#E6F4FE"
+          "color": "#E6F4FE",
+          "mode": "development"
         }
       ]
     ],

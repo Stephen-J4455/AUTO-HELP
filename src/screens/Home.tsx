@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TextInput, Image, TouchableOpacity, Dimensions,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import {Ionicons, MaterialCommunityIcons} from '@expo/vector-icons';
+import { useAuth } from '../context/Auth';
 import { supabase } from '../supabase/supabase';
 import { useCategories } from '../context/Categories';
 import { getProductImageUri } from '../utils/productImages';
@@ -21,12 +22,58 @@ interface Product {
 
 export default function Home({ navigateTo }: { navigateTo?: (name: string, params?: any) => void }) {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const { categories: contextCategories, loading: categoriesLoading } = useCategories();
   const [searchTerm, setSearchTerm] = React.useState('');
   const [latest, setLatest] = React.useState<Product[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [unreadCount, setUnreadCount] = React.useState(0);
   const shimmer = React.useRef(new Animated.Value(0)).current;
   const homeCategories = React.useMemo(() => contextCategories.slice(0, 4), [contextCategories]);
+
+  // Keep the notification bell badge in sync with unread inbox entries.
+  React.useEffect(() => {
+    let mounted = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    async function refreshUnread() {
+      if (!user?.id) {
+        if (mounted) setUnreadCount(0);
+        return;
+      }
+      const { count, error } = await supabase
+        .from('inbox_entries')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
+      if (mounted && !error) setUnreadCount(count || 0);
+    }
+    refreshUnread();
+    timer = setInterval(refreshUnread, 15000);
+
+    // Realtime: update the badge the instant an inbox entry changes.
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    if (user?.id) {
+      channel = supabase
+        .channel(`inbox:${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'inbox_entries',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => refreshUnread()
+        )
+        .subscribe();
+    }
+
+    return () => {
+      mounted = false;
+      if (timer) clearInterval(timer);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   React.useEffect(() => {
     let mounted = true;
@@ -91,11 +138,20 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
               activeOpacity={0.75}
               onPress={() => navigateTo?.('Notifications')}
             >
-              <Ionicons
-                name="notifications-outline"
-                size={22}
-                color={colors.muted}
-              />
+              <View style={styles.notifIconWrap}>
+                <Ionicons
+                  name="notifications-outline"
+                  size={22}
+                  color={colors.muted}
+                />
+                {unreadCount > 0 ? (
+                  <View style={[styles.notifBadge, { backgroundColor: colors.primary, borderColor: colors.surface }]}>
+                    <Text style={styles.notifBadgeText}>
+                      {unreadCount > 99 ? '99+' : String(unreadCount)}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             </TouchableOpacity>
           </View>
           <View
@@ -259,6 +315,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 20,
   },
+  notifIconWrap: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  notifBadge: {
+    position: "absolute",
+    top: -4,
+    right: -6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+  },
+  notifBadgeText: { color: "#fff", fontSize: 10, fontWeight: "900" },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   brand: { fontSize: 27, fontWeight: "900", letterSpacing: 0.6 },
   brandBadge: {

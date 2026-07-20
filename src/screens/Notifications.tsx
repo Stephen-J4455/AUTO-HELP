@@ -30,48 +30,81 @@ export default function Notifications({ navigation }: { navigation: any }) {
   const [entries, setEntries] = useState<NotificationEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function loadNotifications() {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    const { data, error: fetchError } = await supabase
+      .from('inbox_entries')
+      .select('id, title, body, is_read, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (fetchError) {
+      setError(fetchError.message);
+      setLoading(false);
+      return;
+    }
+    setEntries(
+      (data || []).map((item: any) => ({
+        id: String(item.id),
+        title: String(item.title || 'Notification'),
+        body: String(item.body || ''),
+        is_read: Boolean(item.is_read),
+        created_at: String(item.created_at || new Date().toISOString()),
+      }))
+    );
+    setLoading(false);
+  }
 
   useEffect(() => {
     let mounted = true;
-    async function loadNotifications() {
-      if (!user?.id) {
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      setError(null);
-      const { data, error: fetchError } = await supabase
-        .from('inbox_entries')
-        .select('id, title, body, is_read, created_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (fetchError) {
-        if (mounted) {
-          setError(fetchError.message);
-          setLoading(false);
-        }
-        return;
-      }
-      if (mounted) {
-        setEntries(
-          (data || []).map((item: any) => ({
-            id: String(item.id),
-            title: String(item.title || 'Notification'),
-            body: String(item.body || ''),
-            is_read: Boolean(item.is_read),
-            created_at: String(item.created_at || new Date().toISOString()),
-          }))
-        );
-        setLoading(false);
-      }
-    }
-    void loadNotifications();
+    void loadNotifications().then(() => {
+      if (!mounted) return;
+    });
     return () => {
       mounted = false;
     };
   }, [user?.id]);
+
+  const unreadCount = entries.filter((e) => !e.is_read).length;
+
+  async function markAsRead(id: string) {
+    // Optimistically update local state.
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, is_read: true } : e)));
+    const { error: updateError } = await supabase
+      .from('inbox_entries')
+      .update({ is_read: true })
+      .eq('id', id)
+      .eq('user_id', user?.id || '');
+    if (updateError) {
+      // Roll back on failure.
+      setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, is_read: false } : e)));
+    }
+  }
+
+  async function markAllRead() {
+    if (!unreadCount) return;
+    setSaving(true);
+    const ids = entries.filter((e) => !e.is_read).map((e) => e.id);
+    setEntries((prev) => prev.map((e) => ({ ...e, is_read: true })));
+    const { error: updateError } = await supabase
+      .from('inbox_entries')
+      .update({ is_read: true })
+      .in('id', ids)
+      .eq('user_id', user?.id || '');
+    if (updateError) {
+      // Reload to recover correct state.
+      void loadNotifications();
+    }
+    setSaving(false);
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -80,6 +113,16 @@ export default function Notifications({ navigation }: { navigation: any }) {
           <Ionicons name="chevron-back" size={20} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.text }]}>Notifications</Text>
+        {unreadCount > 0 ? (
+          <TouchableOpacity
+            style={[styles.markAllBtn, { backgroundColor: colors.primary }]}
+            activeOpacity={0.8}
+            disabled={saving}
+            onPress={markAllRead}
+          >
+            <Text style={styles.markAllText}>{saving ? 'Working…' : 'Mark all read'}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {loading ? (
@@ -97,7 +140,9 @@ export default function Notifications({ navigation }: { navigation: any }) {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
-            <View
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => markAsRead(item.id)}
               style={[
                 styles.card,
                 {
@@ -113,7 +158,7 @@ export default function Notifications({ navigation }: { navigation: any }) {
                 <Text style={{ color: colors.muted, fontSize: 11 }}>{timeAgo(item.created_at)}</Text>
               </View>
               <Text style={{ color: colors.muted, lineHeight: 18 }}>{item.body || 'No details provided.'}</Text>
-            </View>
+            </TouchableOpacity>
           )}
           ListEmptyComponent={
             <View style={styles.center}>
@@ -132,6 +177,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, marginBottom: 10 },
   backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 28, fontWeight: '900' },
+  markAllBtn: { marginLeft: 'auto', paddingHorizontal: 12, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  markAllText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   list: { paddingHorizontal: 16, paddingBottom: 120, gap: 10 },
   card: {
