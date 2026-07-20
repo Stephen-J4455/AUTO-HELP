@@ -23,6 +23,7 @@ export default function AuthScreen() {
   const [password, setPassword] = React.useState("");
   const [username, setUsername] = React.useState("");
   const [authLoading, setAuthLoading] = React.useState(false);
+  const [showPassword, setShowPassword] = React.useState(false);
 
   const isNative = React.useMemo(() => {
     return Platform.OS !== "web";
@@ -116,12 +117,15 @@ export default function AuthScreen() {
                 <TextInput
                   style={[styles.input, { color: colors.surface }]}
                   placeholder="Password"
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                   placeholderTextColor={colors.surface}
                   value={password}
                   onChangeText={setPassword}
                   editable={!authLoading}
                 />
+                <Pressable onPress={() => setShowPassword((v) => !v)} accessibilityRole="button">
+                  <Ionicons name={showPassword ? "eye-off" : "eye"} size={24} color={colors.muted} />
+                </Pressable>
               </View>
               <Pressable style={{ marginTop: 20 }}>
                 <Text
@@ -151,12 +155,11 @@ export default function AuthScreen() {
                 <Pressable style={{ marginHorizontal: 10 }} onPress={() => handleOAuth("google")}>
                   <Ionicons name="logo-google" size={32} color={colors.primary} />
                 </Pressable>
-                <Pressable style={{ marginHorizontal: 10 }} disabled>
-                  <Ionicons name="logo-facebook" size={32} color={colors.primary} />
-                </Pressable>
-                <Pressable style={{ marginHorizontal: 10 }} disabled={!showAppleLogin} onPress={() => handleOAuth("apple")}>
-                  <Ionicons name="logo-apple" size={32} color={colors.primary} />
-                </Pressable>
+                {showAppleLogin && (
+                  <Pressable style={{ marginHorizontal: 10 }} onPress={() => handleOAuth("apple")}>
+                    <Ionicons name="logo-apple" size={32} color={colors.primary} />
+                  </Pressable>
+                )}
               </View>
               <Pressable style={{ marginTop: 20 }} onPress={() => setIsLogin(false)}>
                 <Text style={{ color: colors.surface }}>
@@ -200,12 +203,15 @@ export default function AuthScreen() {
                 <TextInput
                   style={[styles.input, { color: colors.surface }]}
                   placeholder="Password (min 6 chars)"
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                   placeholderTextColor={colors.surface}
                   value={password}
                   onChangeText={setPassword}
                   editable={!authLoading}
                 />
+                <Pressable onPress={() => setShowPassword((v) => !v)} accessibilityRole="button">
+                  <Ionicons name={showPassword ? "eye-off" : "eye"} size={24} color={colors.muted} />
+                </Pressable>
               </View>
               <Pressable
                 style={[styles.loginbutton, { backgroundColor: colors.background, opacity: authLoading ? 0.5 : 1 }]}
@@ -224,12 +230,11 @@ export default function AuthScreen() {
                 <Pressable style={{ marginHorizontal: 10 }} onPress={() => handleOAuth("google")}>
                   <Ionicons name="logo-google" size={32} color={colors.primary} />
                 </Pressable>
-                <Pressable style={{ marginHorizontal: 10 }} disabled>
-                  <Ionicons name="logo-facebook" size={32} color={colors.primary} />
-                </Pressable>
-                <Pressable style={{ marginHorizontal: 10 }} disabled={!showAppleLogin} onPress={() => handleOAuth("apple")}>
-                  <Ionicons name="logo-apple" size={32} color={colors.primary} />
-                </Pressable>
+                {showAppleLogin && (
+                  <Pressable style={{ marginHorizontal: 10 }} onPress={() => handleOAuth("apple")}>
+                    <Ionicons name="logo-apple" size={32} color={colors.primary} />
+                  </Pressable>
+                )}
               </View>
               <Pressable style={{ marginTop: 20 }} onPress={() => setIsLogin(true)}>
                 <Text style={{ color: colors.surface }}>
@@ -281,7 +286,7 @@ const styles = StyleSheet.create({
     
   },
   input: {
-    width: "70%",
+    flex: 1,
     padding: 12,
     paddingVertical: 15,
     borderColor: "#ccc",
