@@ -1,8 +1,25 @@
-import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
 import { supabase } from '../supabase/supabase';
+
+// expo-notifications was removed from Expo Go (SDK 53+). A static import would
+// crash at module load time there, so we require it dynamically and fall back
+// to a no-op stub when it is unavailable (e.g. running in Expo Go).
+let Notifications: any;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  Notifications = require('expo-notifications');
+} catch (_) {
+  Notifications = {
+    setNotificationHandler: () => {},
+    getPermissionsAsync: async () => ({ status: 'denied' }),
+    requestPermissionsAsync: async () => ({ status: 'denied' }),
+    getExpoPushTokenAsync: async () => ({ data: null }),
+    addNotificationReceivedListener: () => ({ remove: () => {} }),
+    addNotificationResponseReceivedListener: () => ({ remove: () => {} }),
+  };
+}
 
 /**
  * Push notifications require a development build or standalone app. In the Expo
@@ -30,7 +47,7 @@ export function setPushNotificationHandler(): void {
 
 /**
  * Requests permission (if needed) and resolves the Expo push token, or null if
- * push notifications are unavailable (e.g. unsupported emulator) or denied.
+ * push notifications are unavailable (e.g. Expo Go, unsupported emulator) or denied.
  */
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
   if (isExpoGo()) {
