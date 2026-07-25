@@ -8,6 +8,8 @@ import { supabase } from '../supabase/supabase';
 import { useCategories } from '../context/Categories';
 import { getProductImageUri } from '../utils/productImages';
 import { formatCedis } from '../utils/currency';
+import { AppUpdateBanner, MarketingBanner } from '../utils/remoteContent';
+import { APP_VERSION } from '../utils/appVersion';
 
 const { width } = Dimensions.get('window');
 
@@ -121,7 +123,9 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
       <SafeAreaView
           edges={['bottom']} style={[styles.container, { backgroundColor: colors.background , paddingTop: 30, paddingBottom: 80}]}
       >
-          <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+        <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+        <AppUpdateBanner appVersion={APP_VERSION} />
+        <MarketingBanner />
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <View>

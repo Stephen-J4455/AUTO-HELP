@@ -1,13 +1,23 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import Constants from 'expo-constants';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
 import { supabase } from '../supabase/supabase';
+
+/**
+ * Push notifications require a development build or standalone app. In the Expo
+ * Go sandbox, `expo-notifications` is unavailable and would throw at runtime, so
+ * we detect that environment and skip all push setup.
+ */
+export function isExpoGo(): boolean {
+  return Constants.executionEnvironment === ExecutionEnvironment.ExpoGo;
+}
 
 /**
  * Configures how notifications are presented while the app is in the foreground.
  */
 export function setPushNotificationHandler(): void {
+  if (isExpoGo()) return;
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowBanner: true,
@@ -23,6 +33,10 @@ export function setPushNotificationHandler(): void {
  * push notifications are unavailable (e.g. unsupported emulator) or denied.
  */
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
+  if (isExpoGo()) {
+    // Expo Go does not support push notifications; avoid loading the module path.
+    return null;
+  }
   if (!Device.isDevice) {
     // Push tokens can only be issued to physical devices.
     console.warn('Push notifications are unavailable on this device/simulator.');
@@ -72,6 +86,7 @@ export async function savePushToken(userId: string, token: string): Promise<void
  */
 export async function registerAndSaveToken(userId: string | undefined): Promise<void> {
   if (!userId) return;
+  if (isExpoGo()) return;
   setPushNotificationHandler();
   const token = await registerForPushNotificationsAsync();
   if (token) {
@@ -85,6 +100,7 @@ export async function registerAndSaveToken(userId: string | undefined): Promise<
  * Returns a cleanup function that removes the listeners.
  */
 export function addPushNotificationListeners(onTap: () => void): () => void {
+  if (isExpoGo()) return () => {};
   const receivedSub = Notifications.addNotificationReceivedListener(() => {
     // Foreground delivery: the in-app inbox will refresh on next visit.
   });

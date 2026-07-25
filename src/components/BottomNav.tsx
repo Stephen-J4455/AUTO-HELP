@@ -5,6 +5,7 @@ import { useTheme } from '../theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute } from '@react-navigation/native';
 import { useCart } from '../context/Cart';
+import { StickyAdFooter } from '../utils/remoteContent';
 
 type Route = {
   key: string;
@@ -68,18 +69,20 @@ export default function BottomNav({ routes, navigation }: { routes: Route[]; nav
             {React.createElement(r.component, { navigateTo })}
           </View>
         ))}
-      </View>
+        </View>
 
-      <View
-        style={[
-          styles.bar,
-          {
-            bottom: 10 + insets.bottom,
-            backgroundColor: colors.surface,
-            borderColor: colors.background,
-          },
-        ]}
-      >
+        <StickyAdFooter />
+
+        <View
+          style={[
+            styles.bar,
+            {
+              bottom: 10 + insets.bottom,
+              backgroundColor: colors.surface,
+              borderColor: colors.background,
+            },
+          ]}
+        >
         <View style={styles.tabsRow} onLayout={(event) => setTabsWidth(event.nativeEvent.layout.width)}>
           <Animated.View
             pointerEvents="none"
