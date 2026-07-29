@@ -1,8 +1,15 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Image, Linking, Alert, Platform } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Image, Linking, Alert, Platform, ScrollView, Dimensions } from "react-native";
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../theme";
 import { supabase } from "../supabase/supabase";
+
+function isLive(now: number, start?: string | null, end?: string | null): boolean {
+  if (start && new Date(start).getTime() > now) return false;
+  if (end && new Date(end).getTime() < now) return false;
+  return true;
+}
 
 export type AppUpdateItem = {
   id: string;
@@ -24,6 +31,9 @@ export type CampaignItem = {
   image_url: string | null;
   cta_text: string | null;
   cta_target: string | null;
+  placement: string;
+  start_at: string | null;
+  end_at: string | null;
 };
 
 export type AdItem = {
@@ -31,10 +41,37 @@ export type AdItem = {
   title: string;
   image_url: string | null;
   target_url: string | null;
+  description: string | null;
+  cta_text: string | null;
+  cta_target: string | null;
   placement: string;
   weight: number;
   active: boolean;
+  start_at: string | null;
+  end_at: string | null;
+  style: string;
+  cta_platform: string | null;
+  background_color: string;
+  text_color: string;
+  accent_color: string;
+  discount_color: string;
+  discount_badge: string | null;
+  border_radius: number;
+  use_image_as_bg: boolean;
+  show_on_web: boolean;
+  show_on_mobile: boolean;
+  views: number;
+  interactions: number;
 };
+
+// Increment a promotion's view/interaction counter from the public client.
+// Uses the `record_ad_stat` SECURITY DEFINER RPC so anonymous users can
+// update the counter without full UPDATE rights.
+export function recordAdStat(id: string, kind: "view" | "interaction") {
+  Promise.resolve(supabase.rpc("record_ad_stat", { p_ad: id, p_kind: kind }))
+    .then(() => {})
+    .catch(() => {});
+}
 
 function openTarget(target?: string | null) {
   if (!target) return;
@@ -70,20 +107,40 @@ export function useRemoteContent() {
     let mounted = true;
     async function load() {
       const platform = Platform.OS;
-      const [upd, camp, adRes] = await Promise.all([
+      const [upd, adRes] = await Promise.all([
         supabase.from("app_updates").select("*").eq("platform", "all").or(`platform.eq.${platform}`),
-        supabase.from("marketing_campaigns").select("*").eq("placement", "home_banner"),
+        // Ads and marketing campaigns have been merged into a single `ads`
+        // table. Banners use the home_banner / splash placements; the sticky
+        // footer uses sticky_footer. We fetch everything and split by placement.
         supabase.from("ads").select("*"),
       ]);
       if (mounted) {
+        const now = Date.now();
         const updates = (upd.data as AppUpdateItem[]) || [];
         const chosen =
           updates
             .filter((u) => u.active)
             .sort((a, b) => Number(b.force_update) - Number(a.force_update))[0] || null;
         setUpdate(chosen);
-        setCampaigns((camp.data as CampaignItem[]) || []);
-        setAds((adRes.data as AdItem[]) || []);
+        const allAds = ((adRes.data as AdItem[]) || []).filter((a) =>
+          isLive(now, a.start_at, a.end_at),
+        );
+        const bannerPlacements = ["home_banner", "splash"];
+        const campaignsRaw = allAds
+          .filter((a) => bannerPlacements.some((p) => hasPlacement(a, p)))
+          .map((a) => ({
+            id: a.id,
+            title: a.title,
+            description: a.description,
+            image_url: a.image_url,
+            cta_text: a.cta_text,
+            cta_target: a.cta_target ?? a.target_url,
+            placement: a.placement,
+            start_at: a.start_at,
+            end_at: a.end_at,
+          }));
+        setCampaigns(campaignsRaw);
+        setAds(allAds);
       }
       if (mounted) setLoading(false);
     }
@@ -140,33 +197,65 @@ export function AppUpdateBanner({ appVersion }: { appVersion?: string }) {
 
 export function MarketingBanner() {
   const { colors } = useTheme();
-  const { campaigns } = useRemoteContent();
-  if (!campaigns.length) return null;
-  const c = campaigns[0];
+  const { ads } = useRemoteContent();
+  const bannerPlacements = ["home_banner", "splash"];
+  // Only `banner` style promotions belong in the top marketing banner. This
+  // prevents a `sticky_footer` (or other style) ad from ever appearing here.
+  const c = ads.find(
+    (a) => a.active && a.style === "banner" && bannerPlacements.some((p) => hasPlacement(a, p)),
+  );
+  if (!c) return null;
+  const bg = c.background_color || colors.primary;
+  const txt = c.text_color || "#FFFFFF";
+  const accent = c.accent_color || "#FFFFFF";
   return (
     <TouchableOpacity
-      style={[styles.banner, { backgroundColor: colors.primary }]}
+      style={[
+        styles.banner,
+        {
+          backgroundColor: bg,
+          borderRadius: Math.min(Math.max(c.border_radius || 16, 0), 40),
+        },
+      ]}
       activeOpacity={0.9}
-      onPress={() => openTarget(c.cta_target)}
+      onPress={() => openTarget(c.cta_target || c.target_url)}
     >
-      {c.image_url ? <Image source={{ uri: c.image_url }} style={styles.bannerImage} /> : null}
+      {c.image_url && !c.use_image_as_bg ? (
+        <Image source={{ uri: c.image_url }} style={styles.bannerImage} />
+      ) : null}
       <View style={styles.bannerBody}>
-        <Text style={styles.bannerTitle}>{c.title}</Text>
-        {c.description ? <Text style={styles.bannerDesc} numberOfLines={2}>{c.description}</Text> : null}
+        <Text style={[styles.bannerTitle, { color: txt }]}>{c.title}</Text>
+        {c.description ? (
+          <Text style={[styles.bannerDesc, { color: txt, opacity: 0.85 }]} numberOfLines={2}>
+            {c.description}
+          </Text>
+        ) : null}
+        {c.discount_badge ? (
+          <View style={[styles.bannerBadge, { backgroundColor: c.discount_color || "#EF4444" }]}>
+            <Text style={styles.bannerBadgeText}>{c.discount_badge}</Text>
+          </View>
+        ) : null}
       </View>
       {c.cta_text ? (
-        <View style={styles.bannerCta}>
-          <Text style={styles.bannerCtaText}>{c.cta_text}</Text>
+        <View style={[styles.bannerCta, { backgroundColor: accent }]}>
+          <Text style={[styles.bannerCtaText, { color: txt }]}>{c.cta_text}</Text>
         </View>
       ) : null}
     </TouchableOpacity>
   );
 }
 
+function hasPlacement(a: AdItem, p: string): boolean {
+  if (Array.isArray(a.placement)) return a.placement.includes(p);
+  return a.placement === p;
+}
+
 function pickAd(ads: AdItem[]): AdItem | null {
-  const active = ads.filter((a) => a.active && a.placement === "sticky_footer");
+  const active = ads.filter(
+    (a) => a.active && hasPlacement(a, "sticky_footer") && a.show_on_mobile !== false,
+  );
   if (!active.length) return null;
-  const total = active.reduce((s, a) => s + (a.weight || 1), 0);
+  const total = active.reduce((s, a) => s + (a.weight || 1),0);
   let r = Math.random() * total;
   for (const a of active) {
     r -= a.weight || 1;
@@ -178,24 +267,358 @@ function pickAd(ads: AdItem[]): AdItem | null {
 export function StickyAdFooter() {
   const { colors } = useTheme();
   const { ads } = useRemoteContent();
+  const [closed, setClosed] = React.useState(false);
   const ad = React.useMemo(() => pickAd(ads), [ads]);
+  if (!ad || closed) return null;
+  const bg = ad.background_color || colors.surface;
+  const txt = ad.text_color || colors.text;
+  const accent = ad.accent_color || colors.primary;
+  const useImgBg = ad.use_image_as_bg && !!ad.image_url;
+  return (
+    <View
+      style={[
+        styles.sticky,
+        {
+          backgroundColor: useImgBg ? "transparent" : bg,
+          borderTopColor: colors.background,
+          borderTopLeftRadius: Math.min(Math.max(ad.border_radius || 0, 0), 40),
+          borderTopRightRadius: Math.min(Math.max(ad.border_radius || 0, 0), 40),
+        },
+      ]}
+    >
+      {useImgBg && (
+        <Image source={{ uri: ad.image_url! }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      )}
+      {useImgBg && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.4)" }]} />
+      )}
+      <TouchableOpacity
+        style={[styles.adClose, { top: 6, right: 6, backgroundColor: useImgBg ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.08)" }]}
+        activeOpacity={0.8}
+        onPress={() => setClosed(true)}
+      >
+        <Ionicons name="close" size={16} color={useImgBg ? "#fff" : colors.muted} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.stickyTouch}
+        activeOpacity={0.9}
+        onPress={() => openTarget(ad.cta_target || ad.target_url)}
+      >
+        {!useImgBg && ad.image_url ? (
+          <Image source={{ uri: ad.image_url }} style={styles.stickyImage} />
+        ) : !useImgBg ? (
+          <View style={[styles.stickyIcon, { backgroundColor: `${accent}1A` }]}>
+            <Ionicons name="pricetag" size={18} color={accent} />
+          </View>
+        ) : null}
+        <View style={{ flex: 1, marginLeft: 10 }}>
+          <Text style={[styles.stickyTitle, { color: useImgBg ? "#fff" : txt }]} numberOfLines={1}>
+            {ad.title}
+          </Text>
+          <Text style={[styles.stickySub, { color: useImgBg ? "#fff" : colors.muted }]} numberOfLines={1}>
+            Sponsored
+          </Text>
+        </View>
+        {ad.discount_badge ? (
+          <View style={[styles.stickyBadge, { backgroundColor: ad.discount_color || "#EF4444" }]}>
+            <Text style={styles.stickyBadgeText}>{ad.discount_badge}</Text>
+          </View>
+        ) : null}
+        <View style={[styles.stickyCta, { backgroundColor: accent }]}>
+          <Text style={[styles.stickyCtaText, { color: useImgBg ? "#fff" : txt }]}>
+            {ad.cta_text || "View"}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={useImgBg ? "#fff" : colors.muted} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// Pick one live ad for a given screen + optional style, weighted by `weight`.
+function pickScreenAd(ads: AdItem[], screen: string, style?: string): AdItem | null {
+  const pool = ads.filter((a) => {
+    if (!a.active) return false;
+    if (a.show_on_mobile === false) return false;
+    if (!hasPlacement(a, screen) && !hasPlacement(a, '*')) return false;
+    if (style && a.style !== style) return false;
+    return true;
+  });
+  if (!pool.length) return null;
+  const total = pool.reduce((s, a) => s + (a.weight || 1), 0);
+  let r = Math.random() * total;
+  for (const a of pool) {
+    r -= a.weight || 1;
+    if (r <= 0) return a;
+  }
+  return pool[0];
+}
+
+// Shared presentational card. Layout varies by `style` but always uses the
+// ad's own colors, image-as-background option, discount badge and CTA.
+function AdCard({ ad, colors, onClose }: { ad: AdItem; colors: any; onClose?: () => void }) {
+  const textOnImg = ad.use_image_as_bg && !!ad.image_url;
+  const txt = textOnImg ? '#fff' : ad.text_color || colors.text;
+  const accent = ad.accent_color || colors.primary;
+  const radius = Math.min(Math.max(ad.border_radius || 0, 0), 40);
+  const bg = textOnImg ? 'transparent' : ad.background_color || colors.surface;
+
+  const Cta = (
+    <TouchableOpacity
+      style={[styles.adCta, { backgroundColor: accent }]}
+      activeOpacity={0.9}
+      onPress={() => {
+        recordAdStat(ad.id, 'interaction');
+        openTarget(ad.cta_target || ad.target_url);
+      }}
+    >
+      <Text style={[styles.adCtaText, { color: textOnImg ? '#fff' : txt }]}>
+        {ad.cta_text || 'View'}
+      </Text>
+    </TouchableOpacity>
+  );
+  const Badge = ad.discount_badge ? (
+    <View style={[styles.adBadge, { backgroundColor: ad.discount_color || '#EF4444' }]}>
+      <Text style={styles.adBadgeText}>{ad.discount_badge}</Text>
+    </View>
+  ) : null;
+
+  const imgBg = textOnImg ? (
+    <>
+      <Image source={{ uri: ad.image_url! }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
+    </>
+  ) : null;
+
+  const horizontal = ad.style === 'banner' || ad.style === 'sidebar' || ad.style === 'sticky_footer';
+  const centered = ad.style === 'popup';
+
+  return (
+    <View style={[styles.adCard, { backgroundColor: bg, borderRadius: radius }]}>
+      {imgBg}
+      <View
+        style={[
+          styles.adInner,
+          horizontal && { flexDirection: 'row' },
+          centered && { alignItems: 'center' },
+          (ad.style === 'story' || ad.style === 'fullscreen') && { minHeight: 200, justifyContent: 'flex-end' },
+        ]}
+      >
+        {!textOnImg && ad.image_url ? (
+          <Image
+            source={{ uri: ad.image_url }}
+            style={
+              ad.style === 'card' || ad.style === 'story' || ad.style === 'fullscreen'
+                ? styles.adImageWide
+                : styles.adImage
+            }
+            resizeMode="cover"
+          />
+        ) : null}
+        <View style={[styles.adBody, centered && { alignItems: 'center' }]}>
+          {Badge}
+          <Text style={[styles.adTitle, { color: txt }]} numberOfLines={2}>
+            {ad.title}
+          </Text>
+          {ad.description ? (
+            <Text style={[styles.adDesc, { color: txt, opacity: 0.85 }]} numberOfLines={3}>
+              {ad.description}
+            </Text>
+          ) : null}
+          {Cta}
+        </View>
+      </View>
+      {onClose ? (
+        <TouchableOpacity style={styles.adClose} onPress={onClose}>
+          <Ionicons name="close" size={18} color={textOnImg ? '#fff' : colors.muted} />
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+// Inline closable ad card that can be interleaved among product lists.
+export function HomeInlineAd({ ad, colors, onClose }: { ad: AdItem; colors: any; onClose: () => void }) {
+  return <AdCard ad={ad} colors={colors} onClose={onClose} />;
+}
+
+// Public closable ad card used inside lists / feeds.
+export function AdCardInline({ ad, colors, onClose }: { ad: AdItem; colors: any; onClose: () => void }) {
+  return <AdCard ad={ad} colors={colors} onClose={onClose} />;
+}
+
+// Maps a screen name to the ad style that should appear on it. This keeps the
+// main app compliant with the admin editor: an ad only shows in the style it
+// was selected for.
+const SCREEN_STYLES: Record<string, string> = {
+  home: 'banner',
+  search: 'banner',
+  account: 'banner',
+  vehicle: 'card',
+  category: 'story',
+  app_open: 'fullscreen',
+};
+
+// Returns ad items meant to be spliced into product feeds. Only `card` style
+// ads (the style chosen in the admin for in-feed promotion) are eligible.
+export function useFeedAds(colors: any): AdItem[] {
+  const { ads } = useRemoteContent();
+  const items = React.useMemo(
+    () =>
+      ads.filter(
+        (a) =>
+          a.active &&
+          a.show_on_mobile !== false &&
+          a.style === 'card',
+      ),
+    [ads],
+  );
+  React.useEffect(() => {
+    items.forEach((a) => recordAdStat(a.id, 'view'));
+  }, [items]);
+  return items;
+}
+
+// Inline ad for a specific screen (home, search, account, vehicle, category).
+// Closable by default so every ad surface offers a dismiss control. Only shows
+// the ad style mapped to that screen.
+export function ScreenAds({ screen, style }: { screen: string; style?: string }) {
+  const { colors } = useTheme();
+  const { ads } = useRemoteContent();
+  const [closed, setClosed] = React.useState(false);
+  const wanted = style ?? SCREEN_STYLES[screen] ?? null;
+  const ad = React.useMemo(() => pickScreenAd(ads, screen, wanted ?? undefined), [ads, screen, wanted]);
+  React.useEffect(() => {
+    if (ad) recordAdStat(ad.id, 'view');
+  }, [ad?.id]);
+  if (!ad || closed) return null;
+  return <AdCard ad={ad} colors={colors} onClose={() => setClosed(true)} />;
+}
+
+// Horizontal auto-advancing carousel of ads. Only `carousel` style ads are
+// eligible so the Home carousel only shows promotions created as carousels.
+export function AdCarousel({ placement = 'home_carousel' }: { placement?: string }) {
+  const { colors } = useTheme();
+  const { ads } = useRemoteContent();
+  const items = React.useMemo(
+    () =>
+      ads.filter(
+        (a) =>
+          a.active &&
+          a.show_on_mobile !== false &&
+          a.style === 'carousel',
+      ),
+    [ads, placement],
+  );
+  const scrollRef = React.useRef<any>(null);
+  const [active, setActive] = React.useState(0);
+  const [dismissed, setDismissed] = React.useState<string[]>([]);
+
+  const visible = React.useMemo(() => items.filter((a) => !dismissed.includes(a.id)), [items, dismissed]);
+
+  React.useEffect(() => {
+    if (!items.length) return;
+    items.forEach((a) => recordAdStat(a.id, 'view'));
+    if (items.length < 2) return;
+    const t = setInterval(() => {
+      setActive((prev) => {
+        const next = (prev + 1) % items.length;
+        scrollRef.current?.scrollTo({ x: next * SCREEN_WIDTH, animated: true });
+        return next;
+      });
+    }, 4000);
+    return () => clearInterval(t);
+  }, [items]);
+
+  if (!visible.length) return null;
+
+  return (
+    <View style={[styles.carouselWrap, { marginHorizontal: 16, marginTop: 14 }]}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={(e) => {
+          const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+          setActive(idx);
+        }}
+      >
+        {visible.map((ad) => (
+          <View key={ad.id} style={{ width: SCREEN_WIDTH - 32 }}>
+            <AdCard ad={ad} colors={colors} onClose={() => setDismissed((prev) => [...prev, ad.id])} />
+          </View>
+        ))}
+      </ScrollView>
+      {items.length > 1 ? (
+        <View style={styles.carouselDots}>
+          {items.map((_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.carouselDot,
+                { backgroundColor: i === active ? colors.primary : colors.muted + '66' },
+              ]}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// Popup ad rendered as a small floating icon (FAB). Tapping the icon expands a
+// closable ad card. Always dismissible via the close button.
+export function PopupAd() {
+  const { colors } = useTheme();
+  const { ads } = useRemoteContent();
+  const [ad, setAd] = React.useState<AdItem | null>(null);
+  const [open, setOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    const next = pickScreenAd(ads, '*', 'popup') ?? pickScreenAd(ads, 'popup', 'popup');
+    setAd(next);
+    if (next) recordAdStat(next.id, 'view');
+  }, [ads]);
+
+  if (!ad) return null;
+
+  if (!open) {
+    return (
+      <TouchableOpacity
+        style={[styles.adFab, { backgroundColor: colors.primary, shadowColor: '#000' }]}
+        activeOpacity={0.85}
+        onPress={() => setOpen(true)}
+      >
+        <Ionicons name="megaphone" size={20} color="#fff" />
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <View style={styles.adFabWrap}>
+      <TouchableOpacity style={styles.adFabBackdrop} activeOpacity={1} onPress={() => setOpen(false)} />
+      <View style={styles.adFabCard}>
+        <AdCard ad={ad} colors={colors} onClose={() => setOpen(false)} />
+      </View>
+    </View>
+  );
+}
+
+// Full-screen takeover shown when the app opens (style = 'fullscreen').
+export function FullscreenAd() {
+  const { colors } = useTheme();
+  const { ads } = useRemoteContent();
+  const [ad, setAd] = React.useState<AdItem | null>(null);
+  React.useEffect(() => {
+    const next = pickScreenAd(ads, 'app_open', 'fullscreen');
+    setAd(next);
+    if (next) recordAdStat(next.id, 'view');
+  }, [ads]);
   if (!ad) return null;
   return (
-    <View style={[styles.sticky, { backgroundColor: colors.surface, borderTopColor: colors.background }]}>
-      <TouchableOpacity style={styles.stickyTouch} activeOpacity={0.9} onPress={() => openTarget(ad.target_url)}>
-        {ad.image_url ? (
-          <Image source={{ uri: ad.image_url }} style={styles.stickyImage} />
-        ) : (
-          <View style={[styles.stickyIcon, { backgroundColor: `${colors.primary}1A` }]}>
-            <Ionicons name="pricetag" size={18} color={colors.primary} />
-          </View>
-        )}
-        <View style={{ flex: 1, marginLeft: 10 }}>
-          <Text style={[styles.stickyTitle, { color: colors.text }]} numberOfLines={1}>{ad.title}</Text>
-          <Text style={[styles.stickySub, { color: colors.muted }]} numberOfLines={1}>Sponsored</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-      </TouchableOpacity>
+    <View style={styles.adFullscreen}>
+      <AdCard ad={ad} colors={colors} onClose={() => setAd(null)} />
     </View>
   );
 }
@@ -234,14 +657,74 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   bannerCtaText: { color: "#fff", fontSize: 12, fontWeight: "800" },
+  bannerBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginTop: 6,
+  },
+  bannerBadgeText: { color: "#fff", fontSize: 11, fontWeight: "800" },
   sticky: {
     borderTopWidth: 1,
     paddingVertical: 8,
     paddingHorizontal: 16,
+    overflow: "hidden",
   },
   stickyTouch: { flexDirection: "row", alignItems: "center" },
   stickyImage: { width: 40, height: 40, borderRadius: 10 },
   stickyIcon: { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   stickyTitle: { fontSize: 13, fontWeight: "800" },
   stickySub: { fontSize: 10, fontWeight: "600", marginTop: 1 },
+  stickyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  stickyBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
+  stickyCta: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    marginLeft: 8,
+  },
+  stickyCtaText: { fontSize: 11, fontWeight: '800' },
+  adCard: { overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)' },
+  adInner: { padding: 14, gap: 10 },
+  adImage: { width: 64, height: 64, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.06)' },
+  adImageWide: { width: '100%', height: 140, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.06)' },
+  adBody: { flex: 1, gap: 6 },
+  adTitle: { fontSize: 15, fontWeight: '800' },
+  adDesc: { fontSize: 12, marginTop: 2, lineHeight: 16 },
+  adCta: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 12, marginTop: 8 },
+  adCtaText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  adBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  adBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  adClose: { position: 'absolute', top: 8, right: 8, padding: 4, backgroundColor: 'rgba(0,0,0,0.15)', borderRadius: 14 },
+  adOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', zIndex: 50 },
+  adOverlayBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)' },
+  adPopupWrap: { width: '86%', maxWidth: 420 },
+  adFullscreen: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 100, padding: 16 },
+  carouselWrap: { position: 'relative' },
+  carouselDots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 8, gap: 6 },
+  carouselDot: { width: 7, height: 7, borderRadius: 4 },
+  adFab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 90,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    zIndex: 60,
+  },
+  adFabWrap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 70 },
+  adFabBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' },
+  adFabCard: { width: '86%', maxWidth: 420, alignSelf: 'center', marginTop: '45%' },
 });

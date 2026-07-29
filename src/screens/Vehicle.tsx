@@ -303,7 +303,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 16,
-    paddingBottom: 120,
     paddingTop: 4,
   },
   group: {

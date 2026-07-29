@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   loaderWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  results: { padding: 16, paddingBottom: 90, gap: 12 },
+  results: { padding: 16,  gap: 12 },
   card: {
     borderRadius: 18,
     flexDirection: 'row',

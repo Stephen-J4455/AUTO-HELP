@@ -5,7 +5,7 @@ import { useTheme } from '../theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute } from '@react-navigation/native';
 import { useCart } from '../context/Cart';
-import { StickyAdFooter } from '../utils/remoteContent';
+import { StickyAdFooter, ScreenAds } from '../utils/remoteContent';
 
 type Route = {
   key: string;
@@ -71,86 +71,78 @@ export default function BottomNav({ routes, navigation }: { routes: Route[]; nav
         ))}
         </View>
 
+        <ScreenAds screen={active} />
         <StickyAdFooter />
 
         <View
           style={[
             styles.bar,
             {
-              bottom: 10 + insets.bottom,
               backgroundColor: colors.surface,
-              borderColor: colors.background,
+              borderTopColor: colors.background,
+              paddingBottom: insets.bottom,
             },
           ]}
         >
-        <View style={styles.tabsRow} onLayout={(event) => setTabsWidth(event.nativeEvent.layout.width)}>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.activeIndicator,
-              {
-              width: indicatorWidth,
-                backgroundColor: colors.primary,
-              paddingVertical: 20,
-              transform: [{ translateX: indicatorX }],
-              },
-            ]}
-          />
-          {routes.map((r) => {
-            const showBadge = r.key === 'cart' && cartCount > 0;
-            return (
-            <TouchableOpacity
-              key={r.key}
-              onPress={() => setActive(r.key)}
-              activeOpacity={0.8}
-              style={styles.tab}
-            >
-              {r.icon ? (
-              <View style={styles.tabInner}>
-                <View>
-                  <Ionicons
-                    name={r.icon as any}
-                    size={18}
-                    color={active === r.key ? '#fff' : colors.muted}
-                  />
-                  {showBadge ? (
-                    <View style={[styles.badge, { backgroundColor: colors.primary, borderColor: colors.background }]}>
-                      <Text style={styles.badgeText}>{cartCount > 99 ? '99+' : String(cartCount)}</Text>
+          <View style={styles.tabsRow} onLayout={(event) => setTabsWidth(event.nativeEvent.layout.width)}>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.activeIndicator,
+                {
+                  width: indicatorWidth,
+                  backgroundColor: colors.primary,
+                  paddingVertical: 20,
+                  transform: [{ translateX: indicatorX }],
+                },
+              ]}
+            />
+            {routes.map((r) => {
+              const showBadge = r.key === 'cart' && cartCount > 0;
+              return (
+                <TouchableOpacity
+                  key={r.key}
+                  onPress={() => setActive(r.key)}
+                  activeOpacity={0.8}
+                  style={styles.tab}
+                >
+                  {r.icon ? (
+                    <View style={styles.tabInner}>
+                      <View>
+                        <Ionicons
+                          name={r.icon as any}
+                          size={18}
+                          color={active === r.key ? '#fff' : colors.muted}
+                        />
+                        {showBadge ? (
+                          <View style={[styles.badge, { backgroundColor: colors.primary, borderColor: colors.background }]}>
+                            <Text style={styles.badgeText}>{cartCount > 99 ? '99+' : String(cartCount)}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={[styles.tabLabel, { color: active === r.key ? '#fff' : colors.muted }]}>
+                        {r.label}
+                      </Text>
                     </View>
                   ) : null}
-                </View>
-                <Text style={[styles.tabLabel, { color: active === r.key ? '#fff' : colors.muted }]}>
-                  {r.label}
-                </Text>
-              </View>
-              ) : null}
-            </TouchableOpacity>
-          );
-          })}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
       </View>
-    </View>
-  );
+    );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { flex: 1 },
   bar: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-    height: 60,
-    borderRadius: 24,
+    borderTopWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingTop: 6,
     paddingHorizontal: 2,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
   },
   tabsRow: {
     flex: 1,

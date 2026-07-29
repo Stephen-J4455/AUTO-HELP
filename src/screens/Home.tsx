@@ -8,7 +8,7 @@ import { supabase } from '../supabase/supabase';
 import { useCategories } from '../context/Categories';
 import { getProductImageUri } from '../utils/productImages';
 import { formatCedis } from '../utils/currency';
-import { AppUpdateBanner, MarketingBanner } from '../utils/remoteContent';
+import { AppUpdateBanner, MarketingBanner, AdCarousel, useFeedAds, AdCardInline } from '../utils/remoteContent';
 import { APP_VERSION } from '../utils/appVersion';
 
 const { width } = Dimensions.get('window');
@@ -33,6 +33,27 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
   const shimmer = React.useRef(new Animated.Value(0)).current;
   const homeCategories = React.useMemo(() => contextCategories.slice(0, 4), [contextCategories]);
 
+  // Ads to interleave among the vehicle product feed (placement 'home_feed' or '*').
+  const feedAds = useFeedAds(colors);
+  const [dismissedFeedAds, setDismissedFeedAds] = React.useState<string[]>([]);
+  const interleaved = React.useMemo(() => {
+    const result: Array<{ type: 'product'; item: Product } | { type: 'ad'; ad: any }> = [];
+    if (!latest.length) return result;
+    let adIdx = 0;
+    latest.forEach((item, i) => {
+      result.push({ type: 'product', item });
+      // Insert an ad after every 4th product.
+      if ((i + 1) % 4 === 0 && adIdx < feedAds.length) {
+        const ad = feedAds[adIdx];
+        adIdx += 1;
+        if (!dismissedFeedAds.includes(ad.id)) {
+          result.push({ type: 'ad', ad });
+        }
+      }
+    });
+    return result;
+  }, [latest, feedAds, dismissedFeedAds]);
+
   // Keep the notification bell badge in sync with unread inbox entries.
   React.useEffect(() => {
     let mounted = true;
@@ -53,10 +74,14 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
     timer = setInterval(refreshUnread, 15000);
 
     // Realtime: update the badge the instant an inbox entry changes.
+    // Use a unique channel name per mount so React StrictMode's double
+    // invocation (and any re-subscribe) never calls `.on()` on an already
+    // subscribed channel, which throws the postgres_changes error.
     let channel: ReturnType<typeof supabase.channel> | null = null;
     if (user?.id) {
+      const channelName = `inbox:${user.id}:${Math.random().toString(36).slice(2)}`;
       channel = supabase
-        .channel(`inbox:${user.id}`)
+        .channel(channelName)
         .on(
           'postgres_changes',
           {
@@ -121,7 +146,7 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
   return (
     <ScrollView showsVerticalScrollIndicator={false}>
       <SafeAreaView
-          edges={['bottom']} style={[styles.container, { backgroundColor: colors.background , paddingTop: 30, paddingBottom: 80}]}
+          edges={['bottom']} style={[styles.container, { backgroundColor: colors.background , paddingTop: 30}]}
       >
         <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
         <AppUpdateBanner appVersion={APP_VERSION} />
@@ -184,6 +209,8 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
               </View>
           </View>
         </View>
+
+        <AdCarousel placement="home_carousel" />
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -248,53 +275,59 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
             </View>
           ) : (
             <View style={styles.grid}>
-              {latest.map((item) => (
-                <TouchableOpacity 
-                  key={item.id} 
-                  style={[styles.productCard, { backgroundColor: colors.surface }]} 
-                  activeOpacity={0.85} 
-                  onPress={() => navigateTo?.('ProductDetails', { productId: item.id })}
-                >
-                  <View style={styles.imageContainer}>
-                    {item.image ? (
-                      <Image source={item.image} style={styles.productImage} />
-                    ) : (
-                      <View style={[styles.productImage, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
-                        <Ionicons name="cube-outline" size={32} color={colors.muted} />
-                      </View>
-                    )}
+              {interleaved.map((entry, idx) =>
+                entry.type === 'ad' ? (
+                  <View key={`ad-${entry.ad.id}-${idx}`} style={[styles.productCard, { backgroundColor: colors.surface }]}>
+                    <AdCardInline ad={entry.ad} colors={colors} onClose={() => setDismissedFeedAds((prev) => [...prev, entry.ad.id])} />
                   </View>
-
-                  <View style={styles.productInfo}>
-                    <View style={styles.productMetaRow}>
-                      {item.brand ? (
-                        <Text style={[styles.productBrand, { color: colors.primary }]} numberOfLines={1}>
-                          {item.brand}
-                        </Text>
+                ) : (
+                  <TouchableOpacity 
+                    key={entry.item.id} 
+                    style={[styles.productCard, { backgroundColor: colors.surface }]} 
+                    activeOpacity={0.85} 
+                    onPress={() => navigateTo?.('ProductDetails', { productId: entry.item.id })}
+                  >
+                    <View style={styles.imageContainer}>
+                      {entry.item.image ? (
+                        <Image source={entry.item.image} style={styles.productImage} />
                       ) : (
-                        <View />
+                        <View style={[styles.productImage, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+                          <Ionicons name="cube-outline" size={32} color={colors.muted} />
+                        </View>
                       )}
-                      {item.sku ? (
-                        <Text style={[styles.productSku, { color: colors.muted }]} numberOfLines={1}>
-                          {item.sku}
-                        </Text>
-                      ) : null}
                     </View>
-                    <Text
-                      style={[styles.productName, { color: colors.text }]}
-                      numberOfLines={2}
-                    >
-                      {item.name}
-                    </Text>
-                    <View style={styles.productFooter}>
-                      <Text style={[styles.productPrice, { color: colors.primary }]}>{formatCedis(item.price)}</Text>
-                      <View style={[styles.addBtn, { backgroundColor: colors.primary }]}>
-                        <Ionicons name="chevron-forward" size={14} color="#fff" />
+
+                    <View style={styles.productInfo}>
+                      <View style={styles.productMetaRow}>
+                        {entry.item.brand ? (
+                          <Text style={[styles.productBrand, { color: colors.primary }]} numberOfLines={1}>
+                            {entry.item.brand}
+                          </Text>
+                        ) : (
+                          <View />
+                        )}
+                        {entry.item.sku ? (
+                          <Text style={[styles.productSku, { color: colors.muted }]} numberOfLines={1}>
+                            {entry.item.sku}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Text
+                        style={[styles.productName, { color: colors.text }]}
+                        numberOfLines={2}
+                      >
+                        {entry.item.name}
+                      </Text>
+                      <View style={styles.productFooter}>
+                        <Text style={[styles.productPrice, { color: colors.primary }]}>{formatCedis(entry.item.price)}</Text>
+                        <View style={[styles.addBtn, { backgroundColor: colors.primary }]}>
+                          <Ionicons name="chevron-forward" size={14} color="#fff" />
+                        </View>
                       </View>
                     </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
+                  </TouchableOpacity>
+                ),
+              )}
             </View>
           )}
         </View>

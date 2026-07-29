@@ -26,6 +26,7 @@ import { CartProvider } from './src/context/Cart';
 import { CategoryProvider } from './src/context/Categories';
 import { AppAlertProvider } from './src/components/AppAlert';
 import { addPushNotificationListeners, registerAndSaveToken } from './src/utils/pushNotifications';
+import { PopupAd, FullscreenAd } from './src/utils/remoteContent';
 
 const Stack = createNativeStackNavigator();
 
@@ -214,6 +215,8 @@ function AppContent() {
           <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
+      <FullscreenAd />
+      <PopupAd />
       <StatusBar style="dark" />
     </SafeAreaProvider>
   );

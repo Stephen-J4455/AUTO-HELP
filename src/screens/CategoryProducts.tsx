@@ -5,6 +5,7 @@ import { supabase } from '../supabase/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { getProductImageUri } from '../utils/productImages';
 import { formatCedis } from '../utils/currency';
+import { ScreenAds } from '../utils/remoteContent';
 
 type Product = {
   id: string;
@@ -84,6 +85,8 @@ export default function CategoryProducts({ route, navigation }: { route: any; na
           <Text style={[styles.subtitle, { color: colors.muted }]}>{products.length} products</Text>
         </View>
       </View>
+
+      <ScreenAds screen="category" />
 
       {loading ? (
         <View style={styles.center}>

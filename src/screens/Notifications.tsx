@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTheme } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/Auth';
@@ -9,6 +9,7 @@ type NotificationEntry = {
   id: string;
   title: string;
   body: string;
+  image_url: string | null;
   is_read: boolean;
   created_at: string;
 };
@@ -41,7 +42,7 @@ export default function Notifications({ navigation }: { navigation: any }) {
     setError(null);
     const { data, error: fetchError } = await supabase
       .from('inbox_entries')
-      .select('id, title, body, is_read, created_at')
+      .select('id, title, body, image_url, is_read, created_at')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(100);
@@ -56,6 +57,7 @@ export default function Notifications({ navigation }: { navigation: any }) {
         id: String(item.id),
         title: String(item.title || 'Notification'),
         body: String(item.body || ''),
+        image_url: item.image_url ? String(item.image_url) : null,
         is_read: Boolean(item.is_read),
         created_at: String(item.created_at || new Date().toISOString()),
       }))
@@ -158,6 +160,13 @@ export default function Notifications({ navigation }: { navigation: any }) {
                 <Text style={{ color: colors.muted, fontSize: 11 }}>{timeAgo(item.created_at)}</Text>
               </View>
               <Text style={{ color: colors.muted, lineHeight: 18 }}>{item.body || 'No details provided.'}</Text>
+              {item.image_url ? (
+                <Image
+                  source={{ uri: item.image_url }}
+                  style={styles.cardImage}
+                  resizeMode="cover"
+                />
+              ) : null}
             </TouchableOpacity>
           )}
           ListEmptyComponent={
@@ -188,4 +197,5 @@ const styles = StyleSheet.create({
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 },
   cardTitle: { fontSize: 14, fontWeight: '800', flex: 1 },
+  cardImage: { width: '100%', height: 160, borderRadius: 12, marginTop: 10 },
 });
