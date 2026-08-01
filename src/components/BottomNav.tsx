@@ -16,30 +16,37 @@ type Route = {
 
 export default function BottomNav({ routes, navigation }: { routes: Route[]; navigation?: any }) {
   const [active, setActive] = useState(routes[0]?.key || '');
-  const [tabsWidth, setTabsWidth] = useState(0);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const route = useRoute<any>();
-  const indicatorX = React.useRef(new Animated.Value(0)).current;
   const { items: cartItems } = useCart();
   const cartCount = cartItems.reduce((sum, it) => sum + (it.quantity || 0), 0);
 
-  const activeIndex = React.useMemo(
-    () => Math.max(0, routes.findIndex((item) => item.key === active)),
-    [active, routes]
-  );
-  const segmentWidth = tabsWidth && routes.length ? tabsWidth / routes.length : 0;
-  const indicatorWidth = Math.max(0, segmentWidth - 8);
+  // One animated value per tab drives the active/inactive transition. Created
+  // once (keyed on the stable set of route keys) so animation state persists.
+  const routeKeys = routes.map((r) => r.key).join('|');
+  const anims = React.useMemo(() => {
+    const map: Record<string, Animated.Value> = {};
+    const initial = active || routes[0]?.key;
+    routes.forEach((r) => {
+      map[r.key] = new Animated.Value(r.key === initial ? 1 : 0);
+    });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeKeys]);
 
   React.useEffect(() => {
-    if (!segmentWidth) return;
-    Animated.timing(indicatorX, {
-      toValue: activeIndex * segmentWidth + 4,
-      duration: 240,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [activeIndex, segmentWidth, indicatorX]);
+    routes.forEach((r) => {
+      const v = anims[r.key];
+      if (!v) return;
+      Animated.timing(v, {
+        toValue: r.key === active ? 1 : 0,
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    });
+  }, [active, routes, anims]);
 
   React.useEffect(() => {
     const targetTab = route?.params?.tab;
@@ -50,7 +57,7 @@ export default function BottomNav({ routes, navigation }: { routes: Route[]; nav
   }, [navigation, route?.params?.tab, routes]);
 
   const navigateTo = (name: string, params?: any) => {
-    if (name === 'Main' || routes.find(r=>r.key===name)) {
+    if (name === 'Main' || routes.find((r) => r.key === name)) {
       // internal tab switch
       setActive(name);
       return;
@@ -64,74 +71,102 @@ export default function BottomNav({ routes, navigation }: { routes: Route[]; nav
         {routes.map((r) => (
           <View
             key={r.key}
-            style={{ flex: 1, display: active === r.key ? "flex" : "none" }}
+            style={{ flex: 1, display: active === r.key ? 'flex' : 'none' }}
           >
             {React.createElement(r.component, { navigateTo })}
           </View>
         ))}
-        </View>
+      </View>
 
-        <ScreenAds screen={active} />
-        <StickyAdFooter />
+      <ScreenAds screen={active} />
+      <StickyAdFooter />
 
-        <View
-          style={[
-            styles.bar,
-            {
-              backgroundColor: colors.surface,
-              borderTopColor: colors.background,
-              paddingBottom: insets.bottom,
-            },
-          ]}
-        >
-          <View style={styles.tabsRow} onLayout={(event) => setTabsWidth(event.nativeEvent.layout.width)}>
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.activeIndicator,
-                {
-                  width: indicatorWidth,
-                  backgroundColor: colors.primary,
-                  paddingVertical: 20,
-                  transform: [{ translateX: indicatorX }],
-                },
-              ]}
-            />
-            {routes.map((r) => {
-              const showBadge = r.key === 'cart' && cartCount > 0;
-              return (
-                <TouchableOpacity
-                  key={r.key}
-                  onPress={() => setActive(r.key)}
-                  activeOpacity={0.8}
-                  style={styles.tab}
-                >
-                  {r.icon ? (
-                    <View style={styles.tabInner}>
-                      <View>
-                        <Ionicons
-                          name={r.icon as any}
-                          size={18}
-                          color={active === r.key ? '#fff' : colors.muted}
-                        />
-                        {showBadge ? (
-                          <View style={[styles.badge, { backgroundColor: colors.primary, borderColor: colors.background }]}>
-                            <Text style={styles.badgeText}>{cartCount > 99 ? '99+' : String(cartCount)}</Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      <Text style={[styles.tabLabel, { color: active === r.key ? '#fff' : colors.muted }]}>
-                        {r.label}
+      <View
+        style={[
+          styles.bar,
+          {
+            backgroundColor: colors.surface,
+            borderTopColor: colors.background,
+            paddingBottom: insets.bottom,
+          },
+        ]}
+      >
+        <View style={styles.tabsRow}>
+          {routes.map((r) => {
+            const isActive = active === r.key;
+            const showBadge = r.key === 'cart' && cartCount > 0;
+            const v = anims[r.key] || new Animated.Value(0);
+            // Animate opacity + scale for the fill (avoids color interpolation,
+            // which can throw on some RN versions).
+            const chipOpacity = v.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
+            const chipScale = v.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] });
+            const labelScale = v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] });
+            return (
+              <TouchableOpacity
+                key={r.key}
+                onPress={() => setActive(r.key)}
+                activeOpacity={0.7}
+                style={styles.tab}
+              >
+                <View style={styles.iconWrap}>
+                  <Animated.View
+                    style={[
+                      StyleSheet.absoluteFill,
+                      {
+                        backgroundColor: colors.primary,
+                        opacity: chipOpacity,
+                        transform: [{ scale: chipScale }],
+                        borderRadius: 16,
+                      },
+                    ]}
+                  />
+                  <Animated.View style={{ transform: [{ scale: chipScale }] }}>
+                    <Ionicons
+                      name={r.icon as any}
+                      size={20}
+                      color={isActive ? '#fff' : colors.muted}
+                    />
+                  </Animated.View>
+                  {showBadge ? (
+                    <View
+                      style={[
+                        styles.badge,
+                        {
+                          backgroundColor: isActive ? '#fff' : colors.primary,
+                          borderColor: isActive ? colors.primary : colors.background,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.badgeText,
+                          { color: isActive ? colors.primary : '#fff' },
+                        ]}
+                      >
+                        {cartCount > 99 ? '99+' : String(cartCount)}
                       </Text>
                     </View>
                   ) : null}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+                </View>
+                <Animated.Text
+                  style={[
+                    styles.tabLabel,
+                    {
+                      color: isActive ? colors.primary : colors.muted,
+                      fontWeight: isActive ? '900' : '700',
+                      transform: [{ scale: labelScale }],
+                    },
+                  ]}
+                >
+                  {r.label}
+                </Animated.Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
-    );
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -141,37 +176,35 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingTop: 6,
-    paddingHorizontal: 2,
+    paddingTop: 8,
+    paddingHorizontal: 4,
   },
   tabsRow: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    position: 'relative',
-  },
-  activeIndicator: {
-    position: 'absolute',
-    left: 0,
-    top: 4,
-    bottom: 4,
-    borderRadius: 18,
-    
   },
   tab: {
     flex: 1,
-    height: 50,
-    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 4,
+    paddingVertical: 4,
+    gap: 4,
   },
-  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 3 },
-  tabLabel: { fontSize: 11, fontWeight: '800' },
+  // Pill-shaped (fully rounded) chip behind the icon; fills with the primary
+  // color when active and animates in/out on tab change.
+  iconWrap: {
+    position: 'relative',
+    width: 48,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   badge: {
     position: 'absolute',
-    top: -6,
-    right: -10,
+    top: -4,
+    right: -6,
     minWidth: 16,
     height: 16,
     borderRadius: 8,
@@ -180,5 +213,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     borderWidth: 1.5,
   },
-  badgeText: { color: '#fff', fontSize: 10, fontWeight: '900' },
+  badgeText: { fontSize: 10, fontWeight: '900' },
+  tabLabel: {
+    fontSize: 11,
+  },
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Onboarding from './src/screens/Onboarding';
 import Home from './src/screens/Home';
@@ -20,102 +20,21 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AuthScreen from './src/screens/AuthScreen';
+import ForgotPassword from './src/screens/ForgotPassword';
+import UpdatePassword from './src/screens/UpdatePassword';
+import LegalScreen from './src/screens/LegalScreen';
 import { AuthProvider, useAuth } from './src/context/Auth';
 import { storage } from './src/utils/storage';
 import { CartProvider } from './src/context/Cart';
 import { CategoryProvider } from './src/context/Categories';
 import { AppAlertProvider } from './src/components/AppAlert';
+import LoadingScreen from './src/components/LoadingScreen';
 import { addPushNotificationListeners, registerAndSaveToken } from './src/utils/pushNotifications';
 import { PopupAd, FullscreenAd } from './src/utils/remoteContent';
+import { fetchUpdateDecision, UpdateDecision } from './src/utils/updateCheck';
+import UpdateGate from './src/screens/UpdateGate';
 
 const Stack = createNativeStackNavigator();
-
-function AppLoadingScreen() {
-  const { colors } = useTheme();
-  const spin = React.useRef(new Animated.Value(0)).current;
-  const pulse = React.useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.timing(spin, {
-        toValue: 1,
-        duration: 1400,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    ).start();
-
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 800,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0.4,
-          duration: 800,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  }, [spin, pulse]);
-
-  const rotate = spin.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-  const scale = pulse.interpolate({
-    inputRange: [0.4, 1],
-    outputRange: [0.96, 1.04],
-  });
-
-  return (
-    <View style={[loaderStyles.container, { backgroundColor: colors.background }]}>
-      <View style={[loaderStyles.brandRow, { backgroundColor: colors.surface }]}>
-        <Text style={[loaderStyles.brand, { color: colors.text }]}>AUTO HELP</Text>
-        <View style={[loaderStyles.brandBadge, { backgroundColor: colors.primary }]}>
-          <Text style={loaderStyles.brandBadgeText}>GH</Text>
-        </View>
-      </View>
-
-      <View style={loaderStyles.logoWrap}>
-        <Animated.View
-          style={[
-            loaderStyles.ring,
-            { borderColor: `${colors.primary}33`, borderTopColor: colors.primary, transform: [{ rotate }] },
-          ]}
-        />
-        <Animated.View
-          style={[
-            loaderStyles.innerGlow,
-            { backgroundColor: `${colors.primary}20`, transform: [{ scale }] },
-          ]}
-        >
-          <Image
-            source={require('./assets/icon.png')}
-            style={loaderStyles.logoImage}
-            resizeMode="contain"
-          />
-        </Animated.View>
-      </View>
-
-      <Text style={[loaderStyles.title, { color: colors.text }]}>AUTO HELP GH</Text>
-      <Text style={[loaderStyles.subtitle, { color: colors.muted }]}>
-        Trusted auto parts marketplace
-      </Text>
-
-      <View style={[loaderStyles.progressTrack, { backgroundColor: `${colors.primary}1F` }]}>
-        <Animated.View
-          style={[loaderStyles.progressBar, { backgroundColor: colors.primary, transform: [{ scaleX: pulse }] }]}
-        />
-      </View>
-      <Text style={[loaderStyles.loadingText, { color: colors.muted }]}>Loading app…</Text>
-    </View>
-  );
-}
 
 /**
  * Registers the device for push notifications once a user is signed in, and
@@ -145,7 +64,16 @@ function AppContent() {
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [onboardingLoaded, setOnboardingLoaded] = useState(false);
   const { scheme } = useTheme();
-  const { session, loading } = useAuth();
+  const { session, loading, recoveryMode } = useAuth();
+
+  // Check the admin-controlled `app_updates` table once the app is ready,
+  // so we can show maintenance / force-update / optional-update prompts.
+  const [updateDecision, setUpdateDecision] = React.useState<UpdateDecision | null>(null);
+  React.useEffect(() => {
+    if (onboardingLoaded && !loading) {
+      void fetchUpdateDecision().then(setUpdateDecision).catch(() => setUpdateDecision({ kind: "none" }));
+    }
+  }, [onboardingLoaded, loading]);
 
   // Load onboarding status from storage on mount
   useEffect(() => {
@@ -176,13 +104,38 @@ function AppContent() {
   };
 
   if (!onboardingLoaded || loading) {
-    return <AppLoadingScreen />;
+    return <LoadingScreen />;
   }
 
   if (showOnboarding) {
     return (
       <SafeAreaProvider>
         <Onboarding onFinish={handleOnboardingFinish} />
+      </SafeAreaProvider>
+    );
+  }
+
+  // When the user opens a password-reset link from their email, Supabase opens
+  // the app with a short-lived recovery session. Show the "set new password"
+  // screen instead of dropping them straight into the app.
+  if (recoveryMode) {
+    return (
+      <SafeAreaProvider>
+        <UpdatePassword />
+        <StatusBar style="dark" />
+      </SafeAreaProvider>
+    );
+  }
+
+  // Block or prompt the user based on the admin's update configuration.
+  if (updateDecision && updateDecision.kind !== "none") {
+    return (
+      <SafeAreaProvider>
+        <UpdateGate
+          decision={updateDecision}
+          onDismiss={() => setUpdateDecision({ kind: "none" })}
+        />
+        <StatusBar style="dark" />
       </SafeAreaProvider>
     );
   }
@@ -213,6 +166,14 @@ function AppContent() {
           <Stack.Screen name="OrderDetails" component={OrderDetails} options={{ headerShown: false }} />
           <Stack.Screen name="Checkout" component={Checkout} options={{ title: 'Checkout' }} />
           <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPassword} options={{ headerShown: false }} />
+          <Stack.Screen name="UpdatePassword" component={UpdatePassword} options={{ headerShown: false }} />
+          <Stack.Screen name="PrivacyPolicy" options={{ headerShown: false }}>
+            {({ navigation }) => <LegalScreen navigation={navigation} route={{ params: { type: 'privacy' } }} />}
+          </Stack.Screen>
+          <Stack.Screen name="Terms" options={{ headerShown: false }}>
+            {({ navigation }) => <LegalScreen navigation={navigation} route={{ params: { type: 'terms' } }} />}
+          </Stack.Screen>
         </Stack.Navigator>
       </NavigationContainer>
       <FullscreenAd />
@@ -235,94 +196,3 @@ export default function App() {
     </AppAlertProvider>
   );
 }
-
-const loaderStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-    gap: 16,
-  },
-  brandRow: {
-    position: 'absolute',
-    top: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  brand: {
-    fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: 0.4,
-  },
-  brandBadge: {
-    marginLeft: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  brandBadgeText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  logoWrap: {
-    width: 132,
-    height: 132,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  ring: {
-    position: 'absolute',
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    borderWidth: 4,
-  },
-  innerGlow: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoImage: {
-    width: 72,
-    height: 72,
-    borderRadius: 50,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: 0.4,
-  },
-  subtitle: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  progressTrack: {
-    width: '70%',
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  progressBar: {
-    flex: 1,
-    borderRadius: 3,
-  },
-  loadingText: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-});

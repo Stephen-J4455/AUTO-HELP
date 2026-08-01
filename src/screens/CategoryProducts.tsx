@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View, StatusBar } from 'react-native';
 import { useTheme } from '../theme';
 import { supabase } from '../supabase/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { getProductImageUri } from '../utils/productImages';
 import { formatCedis } from '../utils/currency';
 import { ScreenAds } from '../utils/remoteContent';
+import { Dimensions } from 'react-native';
+
+const { width: cpWidth } = Dimensions.get('window');
+const isMobile = cpWidth < 768;
 
 type Product = {
   id: string;
@@ -145,7 +149,7 @@ export default function CategoryProducts({ route, navigation }: { route: any; na
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 40 },
+  container: { flex: 1, paddingTop: isMobile ? (StatusBar.currentHeight || 0) : 40 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, marginBottom: 12 },
   iconBtn: {
     width: 36,

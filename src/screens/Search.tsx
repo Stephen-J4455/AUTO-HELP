@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
   subtitle: { marginTop: 4, fontSize: 13 },
   searchBox: {
     marginHorizontal: 16,
-    borderRadius: 16,
+    borderRadius: 30,
     paddingHorizontal: 14,
     height: 52,
     alignItems: 'center',

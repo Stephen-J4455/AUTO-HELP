@@ -10,8 +10,10 @@ import { getProductImageUri } from '../utils/productImages';
 import { formatCedis } from '../utils/currency';
 import { AppUpdateBanner, MarketingBanner, AdCarousel, useFeedAds, AdCardInline } from '../utils/remoteContent';
 import { APP_VERSION } from '../utils/appVersion';
+import { DEVICE_CORNER_RADIUS } from '../utils/device';
 
 const { width } = Dimensions.get('window');
+const isMobile = width < 768;
 
 interface Product {
   id: string;
@@ -146,7 +148,7 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
   return (
     <ScrollView showsVerticalScrollIndicator={false}>
       <SafeAreaView
-          edges={['bottom']} style={[styles.container, { backgroundColor: colors.background , paddingTop: 30}]}
+          edges={['bottom']} style={[styles.container, { backgroundColor: colors.background , paddingTop: isMobile ? Math.max(0, (StatusBar.currentHeight || 0) - 20) : 30 }]}
       >
         <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
         <AppUpdateBanner appVersion={APP_VERSION} />
@@ -160,7 +162,7 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
                   <Text style={styles.brandBadgeText}>GH</Text>
                 </View>
               </View>
-              <Text style={[styles.brandTagline, { color: colors.muted }]}>Trusted auto parts marketplace</Text>
+              <Text style={[styles.brandTagline, { color: colors.muted }]}>Home of genuine parts</Text>
             </View>
             <TouchableOpacity
               style={[styles.notificationBtn, { backgroundColor: colors.surface }]}
@@ -183,12 +185,14 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
               </View>
             </TouchableOpacity>
           </View>
-          <View
-            style={[
-              styles.searchContainer,
-              { backgroundColor: colors.surface },
-            ]}
-          >
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => navigateTo?.('search')}
+        style={[
+          styles.searchContainer,
+          { backgroundColor: colors.surface, borderRadius: DEVICE_CORNER_RADIUS },
+        ]}
+      >
             <Ionicons
               name="search"
               size={20}
@@ -201,13 +205,12 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
               placeholder="Search parts, VIN, SKU..."
               placeholderTextColor="#999"
               value={searchTerm}
-              onFocus={() => navigateTo?.('search')}
-              onChangeText={setSearchTerm}
-              onSubmitEditing={() => navigateTo?.('search', { q: searchTerm })}
+              editable={false}
+              showSoftInputOnFocus={false}
             />
               <MaterialCommunityIcons name="tune-variant" size={20} color={colors.primary} style={{ position: 'relative' }} />
               </View>
-          </View>
+          </TouchableOpacity>
         </View>
 
         <AdCarousel placement="home_carousel" />

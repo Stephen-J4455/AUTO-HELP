@@ -127,7 +127,7 @@ export default function AuthScreen() {
                   <Ionicons name={showPassword ? "eye-off" : "eye"} size={24} color={colors.muted} />
                 </Pressable>
               </View>
-              <Pressable style={{ marginTop: 20 }}>
+              <Pressable style={{ marginTop: 20 }} onPress={() => navigation.navigate("ForgotPassword")}>
                 <Text
                   style={{
                     color: colors.primary,

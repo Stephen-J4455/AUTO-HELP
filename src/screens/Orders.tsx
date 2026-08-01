@@ -12,6 +12,10 @@ import { useTheme } from '../theme';
 import { useAuth } from '../context/Auth';
 import { supabase } from '../supabase/supabase';
 import { formatCedis } from '../utils/currency';
+import { Dimensions } from 'react-native';
+
+const { width: ordersWidth } = Dimensions.get('window');
+const isMobile = ordersWidth < 768;
 
 type OrderRow = {
   id: string;
@@ -158,7 +162,7 @@ export default function Orders({ navigation }: { navigation: any }) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
-  header: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 8 },
+  header: { paddingHorizontal: 16, paddingTop: isMobile ? 0 : 18, paddingBottom: 8 },
   headerTitle: { fontSize: 26, fontWeight: '900' },
   headerSub: { fontSize: 13, fontWeight: '600', marginTop: 2 },
   list: { padding: 16, paddingTop: 8, paddingBottom: 24, gap: 12 },
