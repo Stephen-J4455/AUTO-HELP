@@ -32,6 +32,14 @@ type Address = {
   is_default: boolean;
 };
 
+type DeliveryLocation = {
+  id: string;
+  name: string;
+  base_price: number;
+  price_per_kg: number;
+  is_active: boolean;
+};
+
 type CheckoutItemPayload = {
   product_id: string;
   sku: string | null;
@@ -41,8 +49,11 @@ type CheckoutItemPayload = {
 type PendingPaymentContext = {
   reference: string;
   cartItems: CheckoutItemPayload[];
-  shippingAddress: Address;
+  shippingAddress: Record<string, unknown>;
   shippingCost: number;
+  deliveryLocationId: string | null;
+  deliveryWeightKg: number;
+  paymentMethod: 'paystack' | 'pay_on_delivery';
 };
 
 function buildPaystackInlineHtml({
@@ -123,11 +134,37 @@ export default function Checkout({ navigation }: { navigation: any }) {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [street, setStreet] = useState('');
-  const [city, setCity] = useState('');
-  const [stateRegion, setStateRegion] = useState('');
-  const [country, setCountry] = useState('Ghana');
 
-  const deliveryFee = items.length ? 6.5 : 0;
+  const [locations, setLocations] = useState<DeliveryLocation[]>([]);
+  const [locationsLoading, setLocationsLoading] = useState(true);
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+  const [payOnDelivery, setPayOnDelivery] = useState(false);
+
+  // Total product weight for weight-based delivery pricing.
+  const totalWeightKg = useMemo(
+    () => items.reduce((sum, it) => sum + (Number(it.weight_kg) || 0) * it.quantity, 0),
+    [items]
+  );
+
+  // All cart items must allow COD for pay-on-delivery to be offered.
+  const allItemsAllowPod = useMemo(
+    () => items.length > 0 && items.every((it) => Boolean(it.pay_on_delivery)),
+    [items]
+  );
+
+  // Delivery fee derived from the selected location + product weight.
+  const selectedLocation = useMemo(
+    () => locations.find((l) => l.id === selectedLocationId) || null,
+    [locations, selectedLocationId]
+  );
+  const deliveryFee = useMemo(() => {
+    if (!selectedLocation) return 0;
+    return (
+      Number(selectedLocation.base_price || 0) +
+      Number(selectedLocation.price_per_kg || 0) * totalWeightKg
+    );
+  }, [selectedLocation, totalWeightKg]);
+
   const grandTotal = useMemo(() => total + deliveryFee, [total, deliveryFee]);
 
   useEffect(() => {
@@ -156,39 +193,69 @@ export default function Checkout({ navigation }: { navigation: any }) {
     };
   }, [user?.id]);
 
+  useEffect(() => {
+    let mounted = true;
+    async function loadLocations() {
+      const { data, error } = await supabase
+        .from('delivery_locations')
+        .select('id, name, base_price, price_per_kg, is_active')
+        .eq('is_active', true)
+        .order('created_at', { ascending: true });
+      if (error) {
+        console.warn('Delivery locations load failed', error.message);
+      } else if (mounted) {
+        const rows = (data as DeliveryLocation[]) || [];
+        setLocations(rows);
+        if (rows.length) setSelectedLocationId(rows[0].id);
+      }
+      if (mounted) setLocationsLoading(false);
+    }
+    void loadLocations();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // If pay-on-delivery becomes unavailable (e.g. cart changed), reset the toggle.
+  useEffect(() => {
+    if (!allItemsAllowPod && payOnDelivery) setPayOnDelivery(false);
+  }, [allItemsAllowPod, payOnDelivery]);
+
   async function handleSaveAddress() {
     if (!user?.id) return;
-    if (!fullName.trim() || !phone.trim() || !street.trim() || !city.trim() || !stateRegion.trim()) {
-      showAlert({ title: 'Address required', message: 'Please fill all address fields.' });
+    if (!fullName.trim() || !phone.trim() || !street.trim()) {
+      showAlert({ title: 'Address required', message: 'Please fill name, phone and street fields.' });
       return;
     }
 
+    // City & state are taken from the selected delivery location; we persist the
+    // location name into city/state so the stored address remains complete.
+    const locationName = selectedLocation?.name || 'Delivery Location';
+
     if (editingAddressId) {
-      // Update existing address
       const { error } = await supabase
         .from('user_addresses')
         .update({
           full_name: fullName.trim(),
           phone: phone.trim(),
           street: street.trim(),
-          city: city.trim(),
-          state: stateRegion.trim(),
-          country: country.trim() || 'Ghana',
+          city: locationName,
+          state: locationName,
+          country: 'Ghana',
         })
         .eq('id', editingAddressId);
-      
+
       if (error) {
         showAlert({ title: 'Update failed', message: error.message });
         return;
       }
-      
-      setAddresses(addresses.map(a => 
-        a.id === editingAddressId 
-          ? { ...a, full_name: fullName, phone, street, city, state: stateRegion, country }
+
+      setAddresses(addresses.map((a) =>
+        a.id === editingAddressId
+          ? { ...a, full_name: fullName, phone, street, city: locationName, state: locationName, country: 'Ghana' }
           : a
       ));
     } else {
-      // Insert new address
       const { data, error } = await supabase
         .from('user_addresses')
         .insert({
@@ -196,9 +263,9 @@ export default function Checkout({ navigation }: { navigation: any }) {
           full_name: fullName.trim(),
           phone: phone.trim(),
           street: street.trim(),
-          city: city.trim(),
-          state: stateRegion.trim(),
-          country: country.trim() || 'Ghana',
+          city: locationName,
+          state: locationName,
+          country: 'Ghana',
           is_default: addresses.length === 0,
         })
         .select('id, full_name, phone, street, city, state, country, is_default')
@@ -211,14 +278,10 @@ export default function Checkout({ navigation }: { navigation: any }) {
       setAddresses(next);
       setSelectedAddressId(data.id);
     }
-    
-    // Reset form
+
     setFullName('');
     setPhone('');
     setStreet('');
-    setCity('');
-    setStateRegion('');
-    setCountry('Ghana');
     setShowAddForm(false);
     setEditingAddressId(null);
   }
@@ -227,9 +290,6 @@ export default function Checkout({ navigation }: { navigation: any }) {
     setFullName(address.full_name);
     setPhone(address.phone);
     setStreet(address.street);
-    setCity(address.city);
-    setStateRegion(address.state);
-    setCountry(address.country);
     setEditingAddressId(address.id);
     setShowAddForm(true);
   };
@@ -254,6 +314,19 @@ export default function Checkout({ navigation }: { navigation: any }) {
     setSelectedAddressId(addressId);
   }
 
+  function buildShippingAddress(selectedAddress: Address) {
+    return {
+      full_name: selectedAddress.full_name,
+      phone: selectedAddress.phone,
+      street: selectedAddress.street,
+      city: selectedLocation?.name || selectedAddress.city,
+      state: selectedLocation?.name || selectedAddress.state,
+      country: selectedAddress.country,
+      delivery_location_id: selectedLocationId,
+      delivery_location_name: selectedLocation?.name || null,
+    };
+  }
+
   async function startPaystackCheckout() {
     if (!user?.id) return;
     if (!items.length) {
@@ -263,6 +336,10 @@ export default function Checkout({ navigation }: { navigation: any }) {
     const selectedAddress = addresses.find((address) => address.id === selectedAddressId);
     if (!selectedAddress) {
       showAlert({ title: 'Address required', message: 'Please select or add a shipping address.' });
+      return;
+    }
+    if (!selectedLocationId) {
+      showAlert({ title: 'Delivery location required', message: 'Please select a delivery location.' });
       return;
     }
     const paystackEmail = String(user.email || '').trim().toLowerCase();
@@ -278,13 +355,17 @@ export default function Checkout({ navigation }: { navigation: any }) {
         sku: item.sku || null,
         quantity: item.quantity,
       }));
+      const shippingAddress = buildShippingAddress(selectedAddress);
       const { data, error } = await supabase.functions.invoke('initialize-paystack-payment', {
         body: {
           amount: grandTotal,
           reference: orderRef,
           metadata: {
             shipping_cost: deliveryFee,
-            shipping_address: selectedAddress,
+            shipping_address: shippingAddress,
+            delivery_location_id: selectedLocationId,
+            delivery_weight_kg: totalWeightKg,
+            payment_method: 'paystack',
             cart_items: cartItems,
           },
         },
@@ -301,8 +382,11 @@ export default function Checkout({ navigation }: { navigation: any }) {
       setPendingPayment({
         reference,
         cartItems,
-        shippingAddress: selectedAddress,
+        shippingAddress,
         shippingCost: deliveryFee,
+        deliveryLocationId: selectedLocationId,
+        deliveryWeightKg: totalWeightKg,
+        paymentMethod: 'paystack',
       });
       setPaystackHtml(
         buildPaystackInlineHtml({
@@ -315,6 +399,54 @@ export default function Checkout({ navigation }: { navigation: any }) {
       );
     } catch (error) {
       showAlert({ title: 'Checkout failed', message: error instanceof Error ? error.message : 'Could not start checkout' });
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  async function placePayOnDeliveryOrder() {
+    if (!user?.id) return;
+    if (!items.length) {
+      showAlert({ title: 'Cart empty', message: 'Add products to cart before checkout.' });
+      return;
+    }
+    const selectedAddress = addresses.find((address) => address.id === selectedAddressId);
+    if (!selectedAddress) {
+      showAlert({ title: 'Address required', message: 'Please select or add a shipping address.' });
+      return;
+    }
+    if (!selectedLocationId) {
+      showAlert({ title: 'Delivery location required', message: 'Please select a delivery location.' });
+      return;
+    }
+    setPaying(true);
+    try {
+      const cartItems: CheckoutItemPayload[] = items.map((item) => ({
+        product_id: item.product_id,
+        sku: item.sku || null,
+        quantity: item.quantity,
+      }));
+      const shippingAddress = buildShippingAddress(selectedAddress);
+      const { data, error } = await supabase.functions.invoke('place-pay-on-delivery', {
+        body: {
+          shipping_cost: deliveryFee,
+          shipping_address: shippingAddress,
+          delivery_location_id: selectedLocationId,
+          delivery_weight_kg: totalWeightKg,
+          payment_method: 'pay_on_delivery',
+          cart_items: cartItems,
+          metadata: { source: 'mobile-pay-on-delivery' },
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.ok) throw new Error(data?.error || 'Could not place order.');
+
+      await clear();
+      setPendingPayment(null);
+      showAlert({ title: 'Order placed', message: 'Your order has been placed. Please have the total amount ready for delivery.' });
+      navigation.navigate('Orders');
+    } catch (error) {
+      showAlert({ title: 'Checkout failed', message: error instanceof Error ? error.message : 'Could not place order' });
     } finally {
       setPaying(false);
     }
@@ -352,6 +484,9 @@ export default function Checkout({ navigation }: { navigation: any }) {
           cart_items: pendingPayment.cartItems,
           shipping_cost: pendingPayment.shippingCost,
           shipping_address: pendingPayment.shippingAddress,
+          delivery_location_id: pendingPayment.deliveryLocationId,
+          delivery_weight_kg: pendingPayment.deliveryWeightKg,
+          payment_method: 'paystack',
           metadata: { source: 'mobile-inline-paystack' },
         },
       });
@@ -369,9 +504,11 @@ export default function Checkout({ navigation }: { navigation: any }) {
     }
   }
 
+  const showAddressForm = showAddForm || addresses.length === 0;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {loading ? (
+      {loading || locationsLoading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -402,6 +539,8 @@ export default function Checkout({ navigation }: { navigation: any }) {
                     </Text>
                     <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
                       <Ionicons name="cube-outline" size={12} color={colors.muted} /> Qty: {item.quantity}
+                      {Number(item.weight_kg) ? `  •  ${Number(item.weight_kg)}kg` : ''}
+                      {item.pay_on_delivery ? '  •  COD' : ''}
                     </Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
@@ -428,7 +567,56 @@ export default function Checkout({ navigation }: { navigation: any }) {
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <Ionicons name="location-outline" size={20} color={colors.primary} />
-              <Text style={[styles.cardTitle, { color: colors.text, margin: 0 }]}>Saved addresses</Text>
+              <Text style={[styles.cardTitle, { color: colors.text, margin: 0 }]}>Delivery location</Text>
+            </View>
+            {locations.length === 0 ? (
+              <Text style={{ color: colors.muted, fontSize: 13 }}>
+                No delivery locations are available right now. Please try again later.
+              </Text>
+            ) : (
+              <FlatList
+                data={locations}
+                keyExtractor={(item) => item.id}
+                scrollEnabled={false}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item }) => {
+                  const active = item.id === selectedLocationId;
+                  const fee = Number(item.base_price || 0) + Number(item.price_per_kg || 0) * totalWeightKg;
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.addressCard,
+                        {
+                          borderColor: active ? colors.primary : colors.background,
+                          backgroundColor: active ? `${colors.primary}12` : colors.background,
+                        },
+                      ]}
+                      onPress={() => setSelectedLocationId(item.id)}
+                    >
+                      <View style={styles.addressHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Ionicons name={active ? "checkmark-circle" : "ellipse-outline"} size={18} color={colors.primary} />
+                          <Text style={{ color: colors.text, fontWeight: '800' }}>{item.name}</Text>
+                        </View>
+                        <Text style={{ color: colors.primary, fontWeight: '800' }}>{formatCedis(fee)}</Text>
+                      </View>
+                      <View style={{ marginTop: 6, marginLeft: 26 }}>
+                        <Text style={{ color: colors.muted, fontSize: 12 }}>
+                          {formatCedis(item.base_price)} base + {formatCedis(item.price_per_kg)}/kg × {totalWeightKg.toFixed(2)}kg
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={<Text style={{ color: colors.muted }}><Ionicons name="information-circle-outline" size={14} color={colors.muted} /> No locations yet.</Text>}
+              />
+            )}
+          </View>
+
+          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <Ionicons name="home-outline" size={20} color={colors.primary} />
+              <Text style={[styles.cardTitle, { color: colors.text, margin: 0 }]}>Delivery address</Text>
             </View>
             <FlatList
               data={addresses}
@@ -454,7 +642,7 @@ export default function Checkout({ navigation }: { navigation: any }) {
                         <Text style={{ color: colors.text, fontWeight: '800' }}>{item.full_name}</Text>
                       </View>
                       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           onPress={() => handleEditAddress(item)}
                           style={{ paddingHorizontal: 8, paddingVertical: 4 }}
                         >
@@ -474,7 +662,7 @@ export default function Checkout({ navigation }: { navigation: any }) {
                     </View>
                     <View style={{ marginTop: 8, marginLeft: 26 }}>
                       <Text style={{ color: colors.muted, fontSize: 12 }}>
-                        <Ionicons name="home-outline" size={11} color={colors.muted} /> {item.street}, {item.city}, {item.state}, {item.country}
+                        <Ionicons name="home-outline" size={11} color={colors.muted} /> {item.street}
                       </Text>
                       <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
                         <Ionicons name="call-outline" size={11} color={colors.muted} /> {item.phone}
@@ -487,174 +675,106 @@ export default function Checkout({ navigation }: { navigation: any }) {
             />
           </View>
 
-          {addresses.length === 0 && (
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
-           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-             <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
-             <Text style={[styles.cardTitle, { color: colors.text, margin: 0 }]}>Add address</Text>
-           </View>
-            <TextInput
-              placeholder="Full name"
-              placeholderTextColor={colors.muted}
-              value={fullName}
-              onChangeText={setFullName}
-              style={[styles.input, { color: colors.text, borderColor: colors.background }]}
-            />
-            <TextInput
-              placeholder="Phone"
-              placeholderTextColor={colors.muted}
-              value={phone}
-              onChangeText={setPhone}
-              style={[styles.input, { color: colors.text, borderColor: colors.background }]}
-              keyboardType="phone-pad"
-            />
-            <TextInput
-              placeholder="Street address"
-              placeholderTextColor={colors.muted}
-              value={street}
-              onChangeText={setStreet}
-              style={[styles.input, { color: colors.text, borderColor: colors.background }]}
-            />
-            <View style={styles.row}>
-              <TextInput
-                placeholder="City"
-                placeholderTextColor={colors.muted}
-                value={city}
-                onChangeText={setCity}
-                style={[styles.input, styles.halfInput, { color: colors.text, borderColor: colors.background }]}
-              />
-              <TextInput
-                placeholder="State"
-                placeholderTextColor={colors.muted}
-                value={stateRegion}
-                onChangeText={setStateRegion}
-                style={[styles.input, styles.halfInput, { color: colors.text, borderColor: colors.background }]}
-              />
-            </View>
-            <TextInput
-              placeholder="Country"
-              placeholderTextColor={colors.muted}
-              value={country}
-              onChangeText={setCountry}
-              style={[styles.input, { color: colors.text, borderColor: colors.background }]}
-            />
-            <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: colors.background }]} onPress={() => void handleSaveAddress()}>
-              <Ionicons name={editingAddressId ? "pencil" : "add"} size={18} color={colors.text} />
-              <Text style={{ color: colors.text, fontWeight: '800' }}>{editingAddressId ? 'Update address' : 'Save address'}</Text>
-            </TouchableOpacity>
-            {editingAddressId && (
-              <TouchableOpacity 
-                style={[styles.secondaryBtn, { backgroundColor: colors.background, opacity: 0.7 }]}
-                onPress={() => {
-                  setEditingAddressId(null);
-                  setShowAddForm(false);
-                  setFullName('');
-                  setPhone('');
-                  setStreet('');
-                  setCity('');
-                  setStateRegion('');
-                  setCountry('Ghana');
-                }}
-              >
-                <Text style={{ color: colors.text, fontWeight: '800' }}>Cancel</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          )}
-
-          {addresses.length > 0 && (
-          <TouchableOpacity 
-            style={[{ marginHorizontal: 16, marginBottom: 12 }, styles.secondaryBtn, { backgroundColor: colors.background, borderWidth: 2, borderColor: colors.primary }]}
-            onPress={() => {
-              setFullName('');
-              setPhone('');
-              setStreet('');
-              setCity('');
-              setStateRegion('');
-              setCountry('Ghana');
-              setEditingAddressId(null);
-              setShowAddForm(!showAddForm);
-            }}
-          >
-            <Ionicons name="add-circle" size={20} color={colors.primary} />
-            <Text style={{ color: colors.primary, fontWeight: '800' }}>Add another address</Text>
-          </TouchableOpacity>
-          )}
-
-          {showAddForm && addresses.length > 0 && (
+          {showAddressForm && (
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <Ionicons name={editingAddressId ? "pencil" : "add-circle-outline"} size={20} color={colors.primary} />
-              <Text style={[styles.cardTitle, { color: colors.text, margin: 0 }]}>{editingAddressId ? 'Edit address' : 'Add address'}</Text>
+              <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+              <Text style={[styles.cardTitle, { color: colors.text, margin: 0 }]}>Add address</Text>
             </View>
-            <TextInput
-              placeholder="Full name"
-              placeholderTextColor={colors.muted}
-              value={fullName}
-              onChangeText={setFullName}
-              style={[styles.input, { color: colors.text, borderColor: colors.background }]}
-            />
-            <TextInput
-              placeholder="Phone"
-              placeholderTextColor={colors.muted}
-              value={phone}
-              onChangeText={setPhone}
-              style={[styles.input, { color: colors.text, borderColor: colors.background }]}
-              keyboardType="phone-pad"
-            />
-            <TextInput
-              placeholder="Street address"
-              placeholderTextColor={colors.muted}
-              value={street}
-              onChangeText={setStreet}
-              style={[styles.input, { color: colors.text, borderColor: colors.background }]}
-            />
-            <View style={styles.row}>
-              <TextInput
-                placeholder="City"
-                placeholderTextColor={colors.muted}
-                value={city}
-                onChangeText={setCity}
-                style={[styles.input, styles.halfInput, { color: colors.text, borderColor: colors.background }]}
-              />
-              <TextInput
-                placeholder="State"
-                placeholderTextColor={colors.muted}
-                value={stateRegion}
-                onChangeText={setStateRegion}
-                style={[styles.input, styles.halfInput, { color: colors.text, borderColor: colors.background }]}
-              />
-            </View>
-            <TextInput
-              placeholder="Country"
-              placeholderTextColor={colors.muted}
-              value={country}
-              onChangeText={setCountry}
-              style={[styles.input, { color: colors.text, borderColor: colors.background }]}
-            />
-            <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: colors.background }]} onPress={() => void handleSaveAddress()}>
-              <Ionicons name={editingAddressId ? "pencil" : "add"} size={18} color={colors.text} />
-              <Text style={{ color: colors.text, fontWeight: '800' }}>{editingAddressId ? 'Update address' : 'Save address'}</Text>
-            </TouchableOpacity>
-            {editingAddressId && (
-              <TouchableOpacity 
-                style={[styles.secondaryBtn, { backgroundColor: colors.background, opacity: 0.7 }]}
-                onPress={() => {
-                  setEditingAddressId(null);
-                  setShowAddForm(false);
-                  setFullName('');
-                  setPhone('');
-                  setStreet('');
-                  setCity('');
-                  setStateRegion('');
-                  setCountry('Ghana');
-                }}
-              >
-                <Text style={{ color: colors.text, fontWeight: '800' }}>Cancel</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          )}
+             <TextInput
+               placeholder="Full name"
+               placeholderTextColor={colors.muted}
+               value={fullName}
+               onChangeText={setFullName}
+               style={[styles.input, { color: colors.text, borderColor: colors.background }]}
+             />
+             <TextInput
+               placeholder="Phone"
+               placeholderTextColor={colors.muted}
+               value={phone}
+               onChangeText={setPhone}
+               style={[styles.input, { color: colors.text, borderColor: colors.background }]}
+               keyboardType="phone-pad"
+             />
+             <TextInput
+               placeholder="Street address"
+               placeholderTextColor={colors.muted}
+               value={street}
+               onChangeText={setStreet}
+               style={[styles.input, { color: colors.text, borderColor: colors.background }]}
+             />
+             {selectedLocation ? (
+               <View style={[styles.locationNote, { backgroundColor: colors.background }]}>
+                 <Ionicons name="location" size={14} color={colors.muted} />
+                 <Text style={{ color: colors.muted, fontSize: 12, marginLeft: 6 }}>
+                   City & state auto-filled as “{selectedLocation.name}”
+                 </Text>
+               </View>
+             ) : null}
+             <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: colors.background }]} onPress={() => void handleSaveAddress()}>
+               <Ionicons name={editingAddressId ? "pencil" : "add"} size={18} color={colors.text} />
+               <Text style={{ color: colors.text, fontWeight: '800' }}>{editingAddressId ? 'Update address' : 'Save address'}</Text>
+             </TouchableOpacity>
+             {editingAddressId && (
+               <TouchableOpacity
+                 style={[styles.secondaryBtn, { backgroundColor: colors.background, opacity: 0.7 }]}
+                 onPress={() => {
+                   setEditingAddressId(null);
+                   setShowAddForm(false);
+                   setFullName('');
+                   setPhone('');
+                   setStreet('');
+                 }}
+               >
+                 <Text style={{ color: colors.text, fontWeight: '800' }}>Cancel</Text>
+               </TouchableOpacity>
+             )}
+           </View>
+           )}
+
+           {addresses.length > 0 && !showAddForm && (
+           <TouchableOpacity
+             style={[{ marginHorizontal: 16, marginBottom: 12 }, styles.secondaryBtn, { backgroundColor: colors.background, borderWidth: 2, borderColor: colors.primary }]}
+             onPress={() => {
+               setFullName('');
+               setPhone('');
+               setStreet('');
+               setEditingAddressId(null);
+               setShowAddForm(true);
+             }}
+           >
+             <Ionicons name="add-circle" size={20} color={colors.primary} />
+             <Text style={{ color: colors.primary, fontWeight: '800' }}>Add another address</Text>
+           </TouchableOpacity>
+           )}
+
+           {allItemsAllowPod && (
+             <View style={[styles.card, { backgroundColor: colors.surface }]}>
+               <TouchableOpacity
+                 style={styles.podRow}
+                 activeOpacity={0.8}
+                 onPress={() => setPayOnDelivery((v) => !v)}
+               >
+                 <View style={{ flex: 1, marginRight: 10 }}>
+                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                     <Ionicons name="cash-outline" size={18} color={colors.primary} />
+                     <Text style={{ color: colors.text, fontWeight: '800' }}>Pay on delivery</Text>
+                   </View>
+                   <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
+                     Pay {formatCedis(grandTotal)} in cash when your order arrives.
+                   </Text>
+                 </View>
+                 <View
+                   style={[
+                     styles.podToggle,
+                     { backgroundColor: payOnDelivery ? colors.primary : colors.background, borderColor: colors.primary },
+                   ]}
+                 >
+                   {payOnDelivery ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}
+                 </View>
+               </TouchableOpacity>
+             </View>
+           )}
         </ScrollView>
 
         <View style={[styles.footer, { backgroundColor: colors.surface }]}>
@@ -680,12 +800,17 @@ export default function Checkout({ navigation }: { navigation: any }) {
             <Text style={{ color: colors.primary, fontWeight: '900', fontSize: 16 }}>{formatCedis(grandTotal)}</Text>
           </View>
           <TouchableOpacity
-            style={[styles.payBtn, { backgroundColor: colors.primary, opacity: paying || verifyingPayment ? 0.7 : 1 }]}
-            onPress={() => void startPaystackCheckout()}
+            style={[styles.payBtn, { backgroundColor: payOnDelivery ? colors.primary : colors.primary, opacity: paying || verifyingPayment ? 0.7 : 1 }]}
+            onPress={() => (payOnDelivery ? void placePayOnDeliveryOrder() : void startPaystackCheckout())}
             disabled={paying || verifyingPayment}
           >
             {paying || verifyingPayment ? (
               <ActivityIndicator color="#fff" />
+            ) : payOnDelivery ? (
+              <>
+                <Ionicons name="cash-outline" size={18} color="#fff" />
+                <Text style={styles.payText}>Place order (Pay on delivery)</Text>
+              </>
             ) : (
               <>
                 <Ionicons name="card-outline" size={18} color="#fff" />
@@ -757,6 +882,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 6,
+  },
+  locationNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  podRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  podToggle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   footer: {
     paddingHorizontal: 16,

@@ -3,8 +3,10 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Modal,
   StyleSheet,
   Text,
+  TextInput,
   View,
   ScrollView,
   TouchableOpacity,
@@ -13,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme';
 import { useAuth } from '../context/Auth';
 import { supabase } from '../supabase/supabase';
+import { useAppAlert } from '../components/AppAlert';
 import { formatCedis } from '../utils/currency';
 import { getProductImageUri } from '../utils/productImages';
 
@@ -34,7 +37,9 @@ type OrderDetail = {
   currency: string | null;
   shipping_cost: number;
   created_at: string;
+  placed_at: string | null;
   paid_at: string | null;
+  payment_method?: string | null;
   shipping_address: {
     full_name?: string;
     phone?: string;
@@ -70,11 +75,15 @@ function firstImage(images: unknown): string | null {
 export default function OrderDetails({ route, navigation }: { route: any; navigation: any }) {
   const { colors } = useTheme();
   const { user } = useAuth();
+  const { show: showAlert } = useAppAlert();
   const orderId = route.params?.orderId;
   const [loading, setLoading] = React.useState(true);
   const [order, setOrder] = React.useState<OrderDetail | null>(null);
   const [items, setItems] = React.useState<OrderItem[]>([]);
   const [notFound, setNotFound] = React.useState(false);
+  const [cancelling, setCancelling] = React.useState(false);
+  const [confirmVisible, setConfirmVisible] = React.useState(false);
+  const [reason, setReason] = React.useState('');
 
   React.useEffect(() => {
     let mounted = true;
@@ -87,7 +96,7 @@ export default function OrderDetails({ route, navigation }: { route: any; naviga
 
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
-        .select('id, status, total_amount, currency, shipping_cost, created_at, paid_at, shipping_address')
+        .select('id, status, total_amount, currency, shipping_cost, created_at, placed_at, paid_at, payment_method, shipping_address')
         .eq('id', orderId)
         .eq('user_id', user.id)
         .single();
@@ -169,6 +178,37 @@ export default function OrderDetails({ route, navigation }: { route: any; naviga
   const subtotal = items.reduce((sum, it) => sum + Number(it.subtotal || 0), 0);
   const shipping = Number(order.shipping_cost || 0);
   const addr = order.shipping_address;
+
+  // Customers may cancel a pay-on-delivery order within 1 hour of placement,
+  // while it is still pending.
+  const isPod = (order.payment_method || 'paystack') === 'pay_on_delivery';
+  const placedMs = order.placed_at ? new Date(order.placed_at).getTime() : new Date(order.created_at).getTime();
+  const withinCancelWindow = Date.now() - placedMs <= 60 * 60 * 1000;
+  const canCancel = isPod && order.status === 'pending' && withinCancelWindow;
+
+  async function handleConfirmCancel() {
+    if (!order) return;
+    setCancelling(true);
+    try {
+      const { data, error } = await supabase.rpc('cancel_order', {
+        p_order_id: order.id,
+        p_reason: reason,
+      });
+      if (error) throw new Error(error.message);
+      const result = (data || {}) as { ok?: boolean; error?: string };
+      if (!result.ok) throw new Error(result.error || 'Could not cancel order.');
+      setOrder({ ...order, status: 'cancelled', payment_method: order.payment_method });
+      if (navigation?.setParams) navigation.setParams({ refresh: Date.now() });
+      setConfirmVisible(false);
+      setReason('');
+      showAlert({ title: 'Order cancelled', message: 'Your pay-on-delivery order has been cancelled.' });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Could not cancel order.';
+      showAlert({ title: 'Cancel failed', message });
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -270,7 +310,59 @@ export default function OrderDetails({ route, navigation }: { route: any; naviga
             Paid on {new Date(order.paid_at).toLocaleString()}
           </Text>
         ) : null}
+
+        {canCancel ? (
+          <TouchableOpacity
+            style={[styles.cancelBtn, { borderColor: '#B91C1C' }]}
+            onPress={() => setConfirmVisible(true)}
+            disabled={cancelling}
+          >
+            <Ionicons name="close-circle-outline" size={18} color="#B91C1C" />
+            <Text style={[styles.cancelText, { color: '#B91C1C' }]}>Cancel order (within 1 hour)</Text>
+          </TouchableOpacity>
+        ) : null}
       </ScrollView>
+
+      <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => setConfirmVisible(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Cancel this order?</Text>
+            <Text style={[styles.modalSub, { color: colors.muted }]}>
+              You can only cancel a pay-on-delivery order within 1 hour of placing it. This action cannot be undone.
+            </Text>
+            <Text style={[styles.label, { color: colors.muted }]}>Reason (optional)</Text>
+            <TextInput
+              placeholder="Why are you cancelling?"
+              placeholderTextColor={colors.muted}
+              value={reason}
+              onChangeText={setReason}
+              style={[styles.input, { color: colors.text, backgroundColor: colors.background }]}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.background }]}
+                onPress={() => { setConfirmVisible(false); setReason(''); }}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.text }]}>Keep order</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: '#B91C1C' }]}
+                onPress={() => void handleConfirmCancel()}
+                disabled={cancelling}
+              >
+                {cancelling ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: '#fff' }]}>Cancel order</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -361,6 +453,52 @@ const styles = StyleSheet.create({
   addrName: { fontSize: 14, fontWeight: '800', marginBottom: 4 },
   addrLine: { fontSize: 13, fontWeight: '600', marginTop: 2 },
   paidNote: { fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: 4 },
+  cancelBtn: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderRadius: 14,
+    paddingVertical: 13,
+  },
+  cancelText: { fontSize: 15, fontWeight: '800' },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 18,
+    padding: 20,
+    backgroundColor: '#fff',
+  },
+  modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 8 },
+  modalSub: { fontSize: 13, fontWeight: '600', lineHeight: 19, marginBottom: 14 },
+  label: { fontSize: 12, fontWeight: '700', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    borderColor: '#e5e5e5',
+    padding: 12,
+    fontSize: 15,
+    minHeight: 80,
+    marginBottom: 16,
+  },
+  modalActions: { flexDirection: 'row', gap: 10 },
+  modalBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnText: { fontSize: 15, fontWeight: '800' },
   emptyTitle: { fontSize: 18, fontWeight: '800' },
   backBtn: {
     marginTop: 18,

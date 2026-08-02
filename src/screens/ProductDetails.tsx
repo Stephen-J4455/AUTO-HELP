@@ -354,6 +354,8 @@ export default function ProductDetails({ route, navigation }: any) {
                   sku: product.sku || '',
                   title: product.title,
                   price: Number(product.price || 0),
+                  weight_kg: Number(product.weight_kg || 0),
+                  pay_on_delivery: Boolean(product.pay_on_delivery),
                   image_url: imageUri || undefined,
                 },
                 1
@@ -377,6 +379,8 @@ export default function ProductDetails({ route, navigation }: any) {
                   sku: product.sku || '',
                   title: product.title,
                   price: Number(product.price || 0),
+                  weight_kg: Number(product.weight_kg || 0),
+                  pay_on_delivery: Boolean(product.pay_on_delivery),
                   image_url: imageUri || undefined,
                 },
                 1

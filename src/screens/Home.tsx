@@ -8,7 +8,7 @@ import { supabase } from '../supabase/supabase';
 import { useCategories } from '../context/Categories';
 import { getProductImageUri } from '../utils/productImages';
 import { formatCedis } from '../utils/currency';
-import { AppUpdateBanner, MarketingBanner, AdCarousel, useFeedAds, AdCardInline } from '../utils/remoteContent';
+import { AppUpdateBanner, MarketingBanner, CallToOrderBanner, AdCarousel, useFeedAds, AdCardInline } from '../utils/remoteContent';
 import { APP_VERSION } from '../utils/appVersion';
 import { DEVICE_CORNER_RADIUS } from '../utils/device';
 
@@ -152,6 +152,7 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
       >
         <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
         <AppUpdateBanner appVersion={APP_VERSION} />
+        <CallToOrderBanner />
         <MarketingBanner />
         <View style={styles.header}>
           <View style={styles.headerTop}>

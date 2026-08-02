@@ -8,6 +8,7 @@ import { useAppAlert } from '../components/AppAlert';
 import LoadingScreen from '../components/LoadingScreen';
 import { APP_VERSION } from '../utils/appVersion';
 import { DEVICE_CORNER_RADIUS } from '../utils/device';
+import { useStoreSettings } from '../utils/remoteContent';
 
 type Profile = {
   fullName: string;
@@ -23,6 +24,7 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
   const { user, session, signOut, deleteAccount, loading } = useAuth();
   const radius = DEVICE_CORNER_RADIUS;
   const { show: showAlert } = useAppAlert();
+  const { settings } = useStoreSettings();
   const [signingOut, setSigningOut] = React.useState(false);
   const [savingProfile, setSavingProfile] = React.useState(false);
   const [profile, setProfile] = React.useState<Profile>({ fullName: '', phone: '', notifications: true });
@@ -279,57 +281,89 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
           </TouchableOpacity>
         </View>
 
-        {/* Contact support */}
+        {/* Contact support — details are managed from the admin Settings page. */}
         <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Contact support</Text>
-          <TouchableOpacity style={styles.settingRow} onPress={() => Linking.openURL('https://facebook.com/autohelpgh')}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                <Ionicons name="logo-facebook" size={16} color={colors.primary} />
+
+          {settings.contact_whatsapp ? (
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() =>
+                Linking.openURL(
+                  /https?:\/\//i.test(settings.contact_whatsapp || '')
+                    ? settings.contact_whatsapp!
+                    : `https://wa.me/${settings.contact_whatsapp!.replace(/[^0-9]/g, '')}`,
+                )
+              }
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
+                  <Ionicons name="logo-whatsapp" size={16} color={colors.primary} />
+                </View>
+                <View>
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>WhatsApp</Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>{settings.contact_whatsapp}</Text>
+                </View>
               </View>
-              <View>
-                <Text style={{ color: colors.text, fontWeight: '700' }}>Facebook</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>Message us on Facebook</Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+            </TouchableOpacity>
+          ) : null}
+
+          {settings.contact_email ? (
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() => Linking.openURL(`mailto:${settings.contact_email}`)}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
+                  <Ionicons name="mail-outline" size={16} color={colors.primary} />
+                </View>
+                <View>
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>Email</Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>{settings.contact_email}</Text>
+                </View>
               </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.settingRow} onPress={() => Linking.openURL('https://wa.me/233200000000')}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                <Ionicons name="logo-whatsapp" size={16} color={colors.primary} />
+              <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+            </TouchableOpacity>
+          ) : null}
+
+          {settings.contact_phone ? (
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() => Linking.openURL(`tel:${settings.contact_phone!.replace(/[^0-9+]/g, '')}`)}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
+                  <Ionicons name="call-outline" size={16} color={colors.primary} />
+                </View>
+                <View>
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>Phone</Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>{settings.contact_phone}</Text>
+                </View>
               </View>
-              <View>
-                <Text style={{ color: colors.text, fontWeight: '700' }}>WhatsApp</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>Chat with our team</Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+            </TouchableOpacity>
+          ) : null}
+
+          {settings.contact_link ? (
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() => Linking.openURL(settings.contact_link!)}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
+                  <Ionicons name="link-outline" size={16} color={colors.primary} />
+                </View>
+                <View>
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>
+                    {settings.contact_link_label || 'Website'}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>{settings.contact_link}</Text>
+                </View>
               </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.settingRow} onPress={() => Linking.openURL('mailto:support@autohelpgh.com')}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                <Ionicons name="mail-outline" size={16} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={{ color: colors.text, fontWeight: '700' }}>Email</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>support@autohelpgh.com</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.settingRow} onPress={() => Linking.openURL('tel:+233200000000')}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                <Ionicons name="call-outline" size={16} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={{ color: colors.text, fontWeight: '700' }}>Phone</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>+233 20 000 0000</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-          </TouchableOpacity>
+              <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* Sign out */}

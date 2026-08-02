@@ -11,6 +11,8 @@ type CartItem = {
   price: number;
   quantity: number;
   image_url?: string;
+  weight_kg?: number;
+  pay_on_delivery?: boolean;
 };
 
 type CartContextValue = {
@@ -33,7 +35,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   async function loadCart(userId: string) {
     const { data, error } = await supabase
       .from('cart_items')
-      .select('id, product_id, sku, quantity, products(title, price, images)')
+      .select('id, product_id, sku, quantity, products(title, price, images, weight_kg, pay_on_delivery)')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
@@ -50,6 +52,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         typeof resolvedProduct?.price === 'number'
           ? resolvedProduct.price
           : parseFloat(String(resolvedProduct?.price ?? 0)) || 0;
+      const weightNumber =
+        typeof resolvedProduct?.weight_kg === 'number'
+          ? resolvedProduct.weight_kg
+          : parseFloat(String(resolvedProduct?.weight_kg ?? 0)) || 0;
 
       return {
         id: typeof row.id === 'string' ? row.id : undefined,
@@ -58,6 +64,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         quantity: Number(row.quantity ?? 1) || 1,
         title,
         price: priceNumber,
+        weight_kg: weightNumber,
+        pay_on_delivery: Boolean((resolvedProduct as { pay_on_delivery?: unknown })?.pay_on_delivery),
         image_url: getProductImageUri(resolvedProduct?.images) || undefined,
       };
     });

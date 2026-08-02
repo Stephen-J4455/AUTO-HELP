@@ -64,13 +64,32 @@ export type AdItem = {
   interactions: number;
 };
 
+// Admin-managed store configuration (single row in `store_settings`).
+// Drives the call-to-order banner on Home and the contact support details
+// on the Account screen.
+export type StoreSettings = {
+  call_to_order_enabled: boolean;
+  call_to_order_title: string;
+  call_to_order_message: string;
+  call_to_order_phone: string | null;
+  contact_whatsapp: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  contact_link: string | null;
+  contact_link_label: string | null;
+};
+
 // Increment a promotion's view/interaction counter from the public client.
 // Uses the `record_ad_stat` SECURITY DEFINER RPC so anonymous users can
 // update the counter without full UPDATE rights.
 export function recordAdStat(id: string, kind: "view" | "interaction") {
   Promise.resolve(supabase.rpc("record_ad_stat", { p_ad: id, p_kind: kind }))
     .then(() => {})
-    .catch(() => {});
+    .catch((e) => {
+      // Surface failures during development; the counter is best-effort so we
+      // intentionally do not throw — a failed stat must never break the UI.
+      console.warn("recordAdStat failed", id, kind, e);
+    });
 }
 
 function openTarget(target?: string | null) {
@@ -204,6 +223,11 @@ export function MarketingBanner() {
   const c = ads.find(
     (a) => a.active && a.style === "banner" && bannerPlacements.some((p) => hasPlacement(a, p)),
   );
+  // Count an impression whenever a banner ad is shown (the banner previously
+  // only recorded an `interaction` on tap, so its `views` never incremented).
+  React.useEffect(() => {
+    if (c) recordAdStat(c.id, 'view');
+  }, [c?.id]);
   if (!c) return null;
   const bg = c.background_color || colors.primary;
   const txt = c.text_color || "#FFFFFF";
@@ -218,7 +242,10 @@ export function MarketingBanner() {
         },
       ]}
       activeOpacity={0.9}
-      onPress={() => openTarget(c.cta_target || c.target_url)}
+      onPress={() => {
+        recordAdStat(c.id, 'interaction');
+        openTarget(c.cta_target || c.target_url);
+      }}
     >
       {c.image_url && !c.use_image_as_bg ? (
         <Image source={{ uri: c.image_url }} style={styles.bannerImage} />
@@ -242,6 +269,90 @@ export function MarketingBanner() {
         </View>
       ) : null}
     </TouchableOpacity>
+  );
+}
+
+// Reads the single-row admin-managed store configuration. Falls back to
+// sensible defaults if the row is missing or the table isn't available yet.
+export function useStoreSettings() {
+  const [settings, setSettings] = React.useState<StoreSettings>({
+    call_to_order_enabled: false,
+    call_to_order_title: 'Call to order',
+    call_to_order_message: '',
+    call_to_order_phone: null,
+    contact_whatsapp: null,
+    contact_email: null,
+    contact_phone: null,
+    contact_link: null,
+    contact_link_label: null,
+  });
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let mounted = true;
+    async function load() {
+      const { data, error } = await supabase
+        .from('store_settings')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle();
+      if (mounted && data && !error) {
+        const row = data as StoreSettings;
+        setSettings({
+          call_to_order_enabled: Boolean(row.call_to_order_enabled),
+          call_to_order_title: row.call_to_order_title || 'Call to order',
+          call_to_order_message: row.call_to_order_message || '',
+          call_to_order_phone: row.call_to_order_phone || null,
+          contact_whatsapp: row.contact_whatsapp || null,
+          contact_email: row.contact_email || null,
+          contact_phone: row.contact_phone || null,
+          contact_link: row.contact_link || null,
+          contact_link_label: row.contact_link_label || null,
+        });
+      }
+      if (mounted) setLoading(false);
+    }
+    void load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  return { settings, loading };
+}
+
+// Banner shown at the top of the Home screen inviting users to call to place
+// an order. Controlled entirely by the admin Settings page.
+export function CallToOrderBanner() {
+  const { colors } = useTheme();
+  const { settings } = useStoreSettings();
+  const [dismissed, setDismissed] = React.useState(false);
+
+  if (!settings.call_to_order_enabled || dismissed) return null;
+  const phone = (settings.call_to_order_phone || '').replace(/[^0-9+]/g, '');
+  if (!phone) return null;
+
+  const dial = () => {
+    if (phone) Linking.openURL(`tel:${phone}`).catch(() => {});
+  };
+
+  return (
+    <View style={[styles.callToOrder, { backgroundColor: colors.primary }]}>
+      <Ionicons name="call-outline" size={20} color="#fff" />
+      <View style={{ flex: 1, marginLeft: 10 }}>
+        <Text style={styles.callToOrderTitle}>{settings.call_to_order_title || 'Call to order'}</Text>
+        {settings.call_to_order_message ? (
+          <Text style={styles.callToOrderMsg} numberOfLines={2}>{settings.call_to_order_message}</Text>
+        ) : null}
+      </View>
+      <TouchableOpacity style={styles.callToOrderBtn} activeOpacity={0.85} onPress={dial}>
+        <Ionicons name="call" size={16} color={colors.primary} />
+        <Text style={[styles.callToOrderBtnText, { color: colors.primary }]}>Call</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.callToOrderClose} onPress={() => setDismissed(true)}>
+        <Ionicons name="close" size={18} color="#fff" />
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -269,6 +380,11 @@ export function StickyAdFooter() {
   const { ads } = useRemoteContent();
   const [closed, setClosed] = React.useState(false);
   const ad = React.useMemo(() => pickAd(ads), [ads]);
+  // Count an impression each time a new sticky-footer ad is shown (mirrors the
+  // other ad surfaces — ScreenAds, AdCarousel, etc. — which all record a view).
+  React.useEffect(() => {
+    if (ad) recordAdStat(ad.id, 'view');
+  }, [ad?.id]);
   if (!ad || closed) return null;
   const bg = ad.background_color || colors.surface;
   const txt = ad.text_color || colors.text;
@@ -302,7 +418,10 @@ export function StickyAdFooter() {
       <TouchableOpacity
         style={styles.stickyTouch}
         activeOpacity={0.9}
-        onPress={() => openTarget(ad.cta_target || ad.target_url)}
+        onPress={() => {
+          recordAdStat(ad.id, 'interaction');
+          openTarget(ad.cta_target || ad.target_url);
+        }}
       >
         {!useImgBg && ad.image_url ? (
           <Image source={{ uri: ad.image_url }} style={styles.stickyImage} />
@@ -363,19 +482,15 @@ function AdCard({ ad, colors, onClose }: { ad: AdItem; colors: any; onClose?: ()
   const radius = Math.min(Math.max(ad.border_radius || 0, 0), 40);
   const bg = textOnImg ? 'transparent' : ad.background_color || colors.surface;
 
+  // The whole card is tappable: tapping anywhere on the ad counts as an
+  // interaction (tap) and opens the destination. The CTA is now a visual
+  // element only so we don't double-count when the card itself is pressed.
   const Cta = (
-    <TouchableOpacity
-      style={[styles.adCta, { backgroundColor: accent }]}
-      activeOpacity={0.9}
-      onPress={() => {
-        recordAdStat(ad.id, 'interaction');
-        openTarget(ad.cta_target || ad.target_url);
-      }}
-    >
+    <View style={[styles.adCta, { backgroundColor: accent }]}>
       <Text style={[styles.adCtaText, { color: textOnImg ? '#fff' : txt }]}>
         {ad.cta_text || 'View'}
       </Text>
-    </TouchableOpacity>
+    </View>
   );
   const Badge = ad.discount_badge ? (
     <View style={[styles.adBadge, { backgroundColor: ad.discount_color || '#EF4444' }]}>
@@ -396,38 +511,46 @@ function AdCard({ ad, colors, onClose }: { ad: AdItem; colors: any; onClose?: ()
   return (
     <View style={[styles.adCard, { backgroundColor: bg, borderRadius: radius }]}>
       {imgBg}
-      <View
-        style={[
-          styles.adInner,
-          horizontal && { flexDirection: 'row' },
-          centered && { alignItems: 'center' },
-          (ad.style === 'story' || ad.style === 'fullscreen') && { minHeight: 200, justifyContent: 'flex-end' },
-        ]}
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => {
+          recordAdStat(ad.id, 'interaction');
+          openTarget(ad.cta_target || ad.target_url);
+        }}
       >
-        {!textOnImg && ad.image_url ? (
-          <Image
-            source={{ uri: ad.image_url }}
-            style={
-              ad.style === 'card' || ad.style === 'story' || ad.style === 'fullscreen'
-                ? styles.adImageWide
-                : styles.adImage
-            }
-            resizeMode="cover"
-          />
-        ) : null}
-        <View style={[styles.adBody, centered && { alignItems: 'center' }]}>
-          {Badge}
-          <Text style={[styles.adTitle, { color: txt }]} numberOfLines={2}>
-            {ad.title}
-          </Text>
-          {ad.description ? (
-            <Text style={[styles.adDesc, { color: txt, opacity: 0.85 }]} numberOfLines={3}>
-              {ad.description}
-            </Text>
+        <View
+          style={[
+            styles.adInner,
+            horizontal && { flexDirection: 'row' },
+            centered && { alignItems: 'center' },
+            (ad.style === 'story' || ad.style === 'fullscreen') && { minHeight: 200, justifyContent: 'flex-end' },
+          ]}
+        >
+          {!textOnImg && ad.image_url ? (
+            <Image
+              source={{ uri: ad.image_url }}
+              style={
+                ad.style === 'card' || ad.style === 'story' || ad.style === 'fullscreen'
+                  ? styles.adImageWide
+                  : styles.adImage
+              }
+              resizeMode="cover"
+            />
           ) : null}
-          {Cta}
+          <View style={[styles.adBody, centered && { alignItems: 'center' }]}>
+            {Badge}
+            <Text style={[styles.adTitle, { color: txt }]} numberOfLines={2}>
+              {ad.title}
+            </Text>
+            {ad.description ? (
+              <Text style={[styles.adDesc, { color: txt, opacity: 0.85 }]} numberOfLines={3}>
+                {ad.description}
+              </Text>
+            ) : null}
+            {Cta}
+          </View>
         </View>
-      </View>
+      </TouchableOpacity>
       {onClose ? (
         <TouchableOpacity style={styles.adClose} onPress={onClose}>
           <Ionicons name="close" size={18} color={textOnImg ? '#fff' : colors.muted} />
@@ -439,6 +562,10 @@ function AdCard({ ad, colors, onClose }: { ad: AdItem; colors: any; onClose?: ()
 
 // Inline closable ad card that can be interleaved among product lists.
 export function HomeInlineAd({ ad, colors, onClose }: { ad: AdItem; colors: any; onClose: () => void }) {
+  // Count an impression whenever this inline ad is shown.
+  React.useEffect(() => {
+    recordAdStat(ad.id, 'view');
+  }, [ad.id]);
   return <AdCard ad={ad} colors={colors} onClose={onClose} />;
 }
 
@@ -665,6 +792,28 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   bannerBadgeText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  callToOrder: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    marginHorizontal: 16,
+    marginTop: 12,
+  },
+  callToOrderTitle: { color: "#fff", fontSize: 14, fontWeight: "900" },
+  callToOrderMsg: { color: "#fff", fontSize: 12, marginTop: 2, lineHeight: 16, opacity: 0.9 },
+  callToOrderBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  callToOrderBtnText: { fontSize: 12, fontWeight: "800", marginLeft: 4 },
+  callToOrderClose: { marginLeft: 8, padding: 2 },
   sticky: {
     borderTopWidth: 1,
     paddingVertical: 8,
