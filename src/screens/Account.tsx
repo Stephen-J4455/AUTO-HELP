@@ -188,7 +188,7 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
     <View style={{ flex: 1 }}>
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{ paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
       >
         {/* Redesigned profile card */}
@@ -364,6 +364,36 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
               <Ionicons name="chevron-forward" size={20} color={colors.muted} />
             </TouchableOpacity>
           ) : null}
+
+          {[
+            ['social_facebook', 'Facebook', 'logo-facebook', settings.social_facebook],
+            ['social_x', 'X', 'logo-x', settings.social_x],
+            ['social_tiktok', 'TikTok', 'logo-tiktok', settings.social_tiktok],
+            ['social_instagram', 'Instagram', 'logo-instagram', settings.social_instagram],
+            ['social_discord', 'Discord', 'logo-discord', settings.social_discord],
+            ['social_threads', 'Threads', 'logo-threads', settings.social_threads],
+            ['social_twitch', 'Twitch', 'logo-twitch', settings.social_twitch],
+            ['social_telegram', 'Telegram', 'paper-plane', settings.social_telegram],
+          ]
+            .filter((row) => (row[3] as string | null))
+            .map(([key, label, icon, url]) => (
+              <TouchableOpacity
+                key={key as string}
+                style={styles.settingRow}
+                onPress={() => Linking.openURL((url as string) || '')}
+              >
+                <View style={styles.settingLeft}>
+                  <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
+                    <Ionicons name={icon as any} size={16} color={colors.primary} />
+                  </View>
+                  <View>
+                    <Text style={{ color: colors.text, fontWeight: '700' }}>{label}</Text>
+                    <Text style={{ color: colors.muted, fontSize: 12 }}>{url as string}</Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+              </TouchableOpacity>
+            ))}
         </View>
 
         {/* Sign out */}

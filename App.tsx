@@ -31,6 +31,7 @@ import { AppAlertProvider } from './src/components/AppAlert';
 import LoadingScreen from './src/components/LoadingScreen';
 import { addPushNotificationListeners, registerAndSaveToken } from './src/utils/pushNotifications';
 import { PopupAd, FullscreenAd } from './src/utils/remoteContent';
+import ChatBotLauncher from './src/components/ChatBotLauncher';
 import { fetchUpdateDecision, UpdateDecision } from './src/utils/updateCheck';
 import UpdateGate from './src/screens/UpdateGate';
 
@@ -178,6 +179,7 @@ function AppContent() {
       </NavigationContainer>
       <FullscreenAd />
       <PopupAd />
+      <ChatBotLauncher />
       <StatusBar style="dark" />
     </SafeAreaProvider>
   );

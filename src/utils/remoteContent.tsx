@@ -77,6 +77,20 @@ export type StoreSettings = {
   contact_phone: string | null;
   contact_link: string | null;
   contact_link_label: string | null;
+  // Social media links shown on the Contact support section
+  social_facebook: string | null;
+  social_x: string | null;
+  social_tiktok: string | null;
+  social_instagram: string | null;
+  social_discord: string | null;
+  social_threads: string | null;
+  social_twitch: string | null;
+  social_telegram: string | null;
+  // Chatbot (OpenRouter) configuration
+  chatbot_enabled: boolean;
+  chatbot_enabled_admin: boolean;
+  chatbot_model: string | null;
+  chatbot_system_prompt: string | null;
 };
 
 // Increment a promotion's view/interaction counter from the public client.
@@ -285,6 +299,18 @@ export function useStoreSettings() {
     contact_phone: null,
     contact_link: null,
     contact_link_label: null,
+    social_facebook: null,
+    social_x: null,
+    social_tiktok: null,
+    social_instagram: null,
+    social_discord: null,
+    social_threads: null,
+    social_twitch: null,
+    social_telegram: null,
+    chatbot_enabled: false,
+    chatbot_enabled_admin: false,
+    chatbot_model: null,
+    chatbot_system_prompt: null,
   });
   const [loading, setLoading] = React.useState(true);
 
@@ -308,6 +334,18 @@ export function useStoreSettings() {
           contact_phone: row.contact_phone || null,
           contact_link: row.contact_link || null,
           contact_link_label: row.contact_link_label || null,
+          social_facebook: row.social_facebook || null,
+          social_x: row.social_x || null,
+          social_tiktok: row.social_tiktok || null,
+          social_instagram: row.social_instagram || null,
+          social_discord: row.social_discord || null,
+          social_threads: row.social_threads || null,
+          social_twitch: row.social_twitch || null,
+          social_telegram: row.social_telegram || null,
+          chatbot_enabled: Boolean(row.chatbot_enabled),
+          chatbot_enabled_admin: Boolean(row.chatbot_enabled_admin),
+          chatbot_model: row.chatbot_model || null,
+          chatbot_system_prompt: row.chatbot_system_prompt || null,
         });
       }
       if (mounted) setLoading(false);
