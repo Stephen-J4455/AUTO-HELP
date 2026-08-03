@@ -15,6 +15,7 @@ import { useTheme } from '../theme';
 import { supabase } from '../supabase/supabase';
 import { getProductImageUri } from '../utils/productImages';
 import { formatCedis } from '../utils/currency';
+import { cacheReadThrough } from '../utils/cache';
 
 const VEHICLE_IMAGES_BUCKET = 'vehicle-images';
 const { width } = Dimensions.get('window');
@@ -87,17 +88,25 @@ export default function VehicleParts({ route, navigation }: { route: any; naviga
     }
 
     try {
-      const [{ data: vehicleData, error: vehicleError }, { data, error }] = await Promise.all([
+      const [{ data: vehicleData, error: vehicleError }, products] = await Promise.all([
         supabase
           .from('vehicles')
           .select('image, trim, engine, body_type, fuel_type, transmission, drivetrain')
           .eq('id', vehicleId)
           .maybeSingle(),
-        supabase
-          .from('products')
-          .select('id, title, sku, brand, price, images, fitments')
-          .order('created_at', { ascending: false })
-          .limit(200),
+        cacheReadThrough<any[]>(
+          `vehicleparts:${vehicleId}`,
+          async () => {
+            const { data, error } = await supabase
+              .from('products')
+              .select('id, title, sku, brand, price, images, fitments')
+              .order('created_at', { ascending: false })
+              .limit(200);
+            if (error) throw error;
+            return data || [];
+          },
+          5 * 60,
+        ),
       ]);
 
       if (vehicleError) {
@@ -106,9 +115,8 @@ export default function VehicleParts({ route, navigation }: { route: any; naviga
         setVehicle(vehicleData as VehicleInfo);
       }
 
-      if (error) {
-        console.warn('Failed to load vehicle parts', error.message);
-      } else if (data) {
+      const data = Array.isArray(products) ? products : null;
+      if (data) {
         const normalizedMake = normalizeText(vehicleMake);
         const normalizedModel = normalizeText(vehicleModel);
         const normalizedYear = toNumber(vehicleYear);

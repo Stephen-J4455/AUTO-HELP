@@ -837,7 +837,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 14,
     marginHorizontal: 16,
-    marginTop: 12,
+    marginTop: 20,
   },
   callToOrderTitle: { color: "#fff", fontSize: 14, fontWeight: "900" },
   callToOrderMsg: { color: "#fff", fontSize: 12, marginTop: 2, lineHeight: 16, opacity: 0.9 },

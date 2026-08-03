@@ -1,6 +1,6 @@
 import * as Device from 'expo-device';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { supabase } from '../supabase/supabase';
 
 // expo-notifications was removed from Expo Go (SDK 53+). A static import would
@@ -163,6 +163,14 @@ export async function registerAndSaveToken(userId: string | undefined): Promise<
  * a notification (used to deep-link into the app, e.g. the Notifications screen).
  * Returns a cleanup function that removes the listeners.
  */
+export async function openNotificationSettings(): Promise<void> {
+  try {
+    await Linking.openSettings();
+  } catch (e) {
+    console.warn('Failed to open notification settings:', e);
+  }
+}
+
 export function addPushNotificationListeners(onTap: () => void): () => void {
   if (isExpoGo()) return () => {};
   const receivedSub = Notifications.addNotificationReceivedListener(() => {

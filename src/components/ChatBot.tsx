@@ -6,15 +6,21 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   Modal,
+  Image,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme';
-import { sendChatMessage, ChatMessage } from '../utils/chatbot';
+import { sendChatMessage, buildClientContext, ChatMessage, ChatCard } from '../utils/chatbot';
+import Markdown from './Markdown';
+import { navigateGlobal } from '../utils/navigation';
+import { getProductImageUri } from '../utils/productImages';
+import { formatCedis } from '../utils/currency';
+
+type CardItem = ChatCard & { key: string };
 
 type Props = {
   visible: boolean;
@@ -26,25 +32,25 @@ type Props = {
 
 const GREETING: ChatMessage = {
   role: 'assistant',
-  content: "Hi! 👋 I'm the Auto Help GH assistant. Ask me about parts, categories, vehicle fitment or how to order.",
+  content: "Hi! 👋 I'm the Auto Help GH assistant. Ask me about parts, categories, vehicle fitment or how to order. I can also show you products and vehicles — just tap a card to open it.",
 };
 
 export default function ChatBot({ visible, onClose, model, systemPrompt, storeName }: Props) {
   const { colors } = useTheme();
   const [messages, setMessages] = React.useState<ChatMessage[]>([GREETING]);
+  const [cards, setCards] = React.useState<Record<number, CardItem[]>>({});
   const [input, setInput] = React.useState('');
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const listRef = React.useRef<any>(null);
 
-  // History is preserved across open/close — only a tap on the "new chat"
-  // icon resets the conversation. We just make sure the list scrolls down.
   React.useEffect(() => {
     if (visible) setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 50);
   }, [visible]);
 
   const clearChat = () => {
     setMessages([GREETING]);
+    setCards({});
     setError(null);
     setInput('');
   };
@@ -58,11 +64,16 @@ export default function ChatBot({ visible, onClose, model, systemPrompt, storeNa
     setSending(true);
     setError(null);
     try {
-      const reply = await sendChatMessage(
+      const context = await buildClientContext();
+      const { reply, cards: replyCards } = await sendChatMessage(
         next.filter((m) => m.role === 'user' || m.role === 'assistant') as ChatMessage[],
-        { model, systemPrompt, storeName },
+        { model, systemPrompt, storeName, context },
       );
+      const idx = next.length; // assistant index
       setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+      if (replyCards && replyCards.length) {
+        setCards((prev) => ({ ...prev, [idx]: replyCards.map((c, i) => ({ ...c, key: `${idx}-${i}` })) }));
+      }
     } catch (e: any) {
       setError(e?.message || 'Something went wrong.');
     } finally {
@@ -71,64 +82,124 @@ export default function ChatBot({ visible, onClose, model, systemPrompt, storeNa
     }
   };
 
+  const openCard = (card: CardItem) => {
+    navigateGlobal(card.target.screen, card.target.params);
+    onClose();
+  };
+
+  const renderCard = (card: CardItem) => {
+    const imageUri =
+      card.type === 'product' && card.image
+        ? getProductImageUri(card.image)
+        : card.image || null;
+    return (
+      <TouchableOpacity
+        activeOpacity={0.85}
+        style={[styles.cardItem, { backgroundColor: colors.surface, borderColor: colors.background }]}
+        onPress={() => openCard(card)}
+      >
+        {imageUri ? (
+          <Image source={{ uri: imageUri }} style={styles.cardImage} />
+        ) : (
+          <View style={[styles.cardImage, { backgroundColor: colors.background }]}>
+            <Ionicons
+              name={card.type === 'vehicle' ? 'car-sport' : 'cube-outline'}
+              size={22}
+              color={colors.muted}
+            />
+          </View>
+        )}
+        <View style={styles.cardBody}>
+          <Text style={[styles.cardType, { color: colors.primary }]} numberOfLines={1}>
+            {card.type === 'vehicle' ? 'Vehicle' : 'Product'}
+          </Text>
+          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
+            {card.title}
+          </Text>
+          {card.subtitle ? (
+            <Text style={[styles.cardSubtitle, { color: colors.muted }]} numberOfLines={1}>
+              {card.subtitle}
+            </Text>
+          ) : null}
+          {typeof card.price === 'number' ? (
+            <Text style={[styles.cardPrice, { color: colors.primary }]}>{formatCedis(card.price)}</Text>
+          ) : null}
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+      </TouchableOpacity>
+    );
+  };
+
   if (!visible) return null;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { backgroundColor: colors.surface, borderColor: colors.background }]}>
-          <View style={[styles.headerIcon, { backgroundColor: `${colors.primary}18` }]}>
-            <Ionicons name="chatbubble-ellipses" size={20} color={colors.primary} />
-          </View>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>AI Assistant</Text>
-          <View style={styles.headerActions}>
-            <TouchableOpacity onPress={clearChat} hitSlop={8} style={styles.headerActionBtn}>
-              <Ionicons name="trash-outline" size={20} color={colors.muted} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onClose} hitSlop={10} style={styles.closeBtn}>
-              <Ionicons name="close" size={24} color={colors.text} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <FlatList
-          ref={listRef}
-          data={messages}
-          keyExtractor={(_, i) => String(i)}
-          contentContainerStyle={styles.list}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-          renderItem={({ item }) => {
-            const isUser = item.role === 'user';
-            return (
-              <View style={[styles.bubbleRow, isUser ? styles.rowUser : styles.rowBot]}>
-                <View
-                  style={[
-                    styles.bubble,
-                    {
-                      backgroundColor: isUser ? colors.primary : colors.surface,
-                      borderColor: isUser ? colors.primary : colors.background,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.bubbleText, { color: isUser ? colors.surface : colors.text }]}>
-                    {item.content}
-                  </Text>
-                </View>
-              </View>
-            );
-          }}
-        />
-
-        {error ? (
-          <View style={[styles.errorBox, { backgroundColor: `${colors.danger || '#B91C1C'}14` }]}>
-            <Text style={[styles.errorText, { color: colors.danger || '#B91C1C' }]}>{error}</Text>
-          </View>
-        ) : null}
-
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[styles.flex, { backgroundColor: colors.background }]}
+          behavior="padding"
           keyboardVerticalOffset={10}
         >
+          <View style={[styles.header, { backgroundColor: colors.surface, borderColor: colors.background }]}>
+            <View style={[styles.headerIcon, { backgroundColor: `${colors.primary}18` }]}>
+              <Ionicons name="chatbubble-ellipses" size={20} color={colors.primary} />
+            </View>
+            <Text style={[styles.headerTitle, { color: colors.text }]}>AI Assistant</Text>
+            <View style={styles.headerActions}>
+              <TouchableOpacity onPress={clearChat} hitSlop={8} style={styles.headerActionBtn}>
+                <Ionicons name="trash-outline" size={20} color={colors.muted} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onClose} hitSlop={10} style={styles.closeBtn}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <FlatList
+            ref={listRef}
+            data={messages}
+            keyExtractor={(_, i) => String(i)}
+            contentContainerStyle={styles.list}
+            style={styles.flex}
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+            renderItem={({ item, index }) => {
+              const isUser = item.role === 'user';
+              const rowCards = cards[index];
+              return (
+                <View style={[styles.bubbleRow, isUser ? styles.rowUser : styles.rowBot]}>
+                  <View
+                    style={[
+                      styles.bubble,
+                      {
+                        backgroundColor: isUser ? colors.primary : colors.surface,
+                        borderColor: isUser ? colors.primary : colors.background,
+                      },
+                    ]}
+                  >
+                    {isUser ? (
+                      <Text style={[styles.bubbleText, { color: colors.surface }]}>{item.content}</Text>
+                    ) : (
+                      <Markdown content={item.content} color={colors.text} />
+                    )}
+                  </View>
+                  {rowCards && rowCards.length > 0 && !isUser ? (
+                    <View style={styles.cardList}>
+                      {rowCards.map((c) => (
+                        <React.Fragment key={c.key}>{renderCard(c)}</React.Fragment>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            }}
+          />
+
+          {error ? (
+            <View style={[styles.errorBox, { backgroundColor: `${colors.danger || '#B91C1C'}14` }]}>
+              <Text style={[styles.errorText, { color: colors.danger || '#B91C1C' }]}>{error}</Text>
+            </View>
+          ) : null}
+
           <View style={[styles.inputBar, { backgroundColor: colors.surface, borderColor: colors.background }]}>
             <TextInput
               style={[styles.input, { color: colors.text, borderColor: colors.background }]}
@@ -160,6 +231,7 @@ export default function ChatBot({ visible, onClose, model, systemPrompt, storeNa
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  flex: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -175,7 +247,7 @@ const styles = StyleSheet.create({
   list: { padding: 16, gap: 10 },
   bubbleRow: { flexDirection: 'row' },
   rowUser: { justifyContent: 'flex-end' },
-  rowBot: { justifyContent: 'flex-start' },
+  rowBot: { justifyContent: 'flex-start', flexDirection: 'column', alignItems: 'flex-start' },
   bubble: {
     maxWidth: '80%',
     paddingVertical: 10,
@@ -184,6 +256,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   bubbleText: { fontSize: 14, lineHeight: 20 },
+  cardList: { marginTop: 8, gap: 8, width: '100%' },
+  cardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 10,
+  },
+  cardImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  cardBody: { flex: 1, gap: 2 },
+  cardType: { fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.4 },
+  cardTitle: { fontSize: 13, fontWeight: '800' },
+  cardSubtitle: { fontSize: 11, fontWeight: '600' },
+  cardPrice: { fontSize: 13, fontWeight: '900' },
   errorBox: { marginHorizontal: 16, padding: 10, borderRadius: 10, marginBottom: 8 },
   errorText: { fontSize: 13, fontWeight: '600' },
   inputBar: {

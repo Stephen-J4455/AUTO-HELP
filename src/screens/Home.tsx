@@ -11,6 +11,7 @@ import { formatCedis } from '../utils/currency';
 import { AppUpdateBanner, MarketingBanner, CallToOrderBanner, AdCarousel, useFeedAds, AdCardInline } from '../utils/remoteContent';
 import { APP_VERSION } from '../utils/appVersion';
 import { DEVICE_CORNER_RADIUS } from '../utils/device';
+import { cacheReadThrough } from '../utils/cache';
 
 const { width } = Dimensions.get('window');
 const isMobile = width < 768;
@@ -108,18 +109,29 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
     let mounted = true;
     async function load() {
       setLoading(true);
-      const { data: products, error } = await supabase
-        .from('products')
-        .select('id, title, sku, images, price, brand, created_at')
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) {
-        console.warn('Failed to load products', error.message);
+      let rows: any[] = [];
+      try {
+        rows = await cacheReadThrough(
+          'home:latest_products',
+          async () => {
+            const { data, error } = await supabase
+              .from('products')
+              .select('id, title, sku, images, price, brand, created_at')
+              .order('created_at', { ascending: false })
+              .limit(50);
+            if (error) throw error;
+            return data || [];
+          },
+          120,
+        );
+      } catch (e: any) {
+        console.warn('Failed to load products', e?.message);
+        rows = [];
       }
-      if (mounted && products) {
+
+      if (mounted) {
         setLatest(
-          products.map((p: any) => ({
+          rows.map((p: any) => ({
             id: p.id,
             name: p.title,
             sku: p.sku,

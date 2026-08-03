@@ -9,6 +9,7 @@ import LoadingScreen from '../components/LoadingScreen';
 import { APP_VERSION } from '../utils/appVersion';
 import { DEVICE_CORNER_RADIUS } from '../utils/device';
 import { useStoreSettings } from '../utils/remoteContent';
+import { openNotificationSettings } from '../utils/pushNotifications';
 
 type Profile = {
   fullName: string;
@@ -267,6 +268,22 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
               trackColor={{ false: '#b0b0b0', true: colors.primary }}
             />
           </View>
+          <TouchableOpacity
+            style={styles.settingRow}
+            activeOpacity={0.7}
+            onPress={() => void openNotificationSettings()}
+          >
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
+                <Ionicons name="settings-outline" size={16} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={{ color: colors.text, fontWeight: '700' }}>Notification settings</Text>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>Open system notification settings</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.settingRow} onPress={() => navigateTo?.('Checkout')}>
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>

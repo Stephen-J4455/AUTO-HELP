@@ -17,6 +17,7 @@ import VehicleParts from './src/screens/VehicleParts';
 import BottomNav from './src/components/BottomNav';
 import { useTheme } from './src/theme';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AuthScreen from './src/screens/AuthScreen';
@@ -34,6 +35,7 @@ import { PopupAd, FullscreenAd } from './src/utils/remoteContent';
 import ChatBotLauncher from './src/components/ChatBotLauncher';
 import { fetchUpdateDecision, UpdateDecision } from './src/utils/updateCheck';
 import UpdateGate from './src/screens/UpdateGate';
+import { navigationRef } from './src/utils/navigation';
 
 const Stack = createNativeStackNavigator();
 
@@ -151,8 +153,8 @@ function AppContent() {
   ];
 
   return (
-    <SafeAreaProvider>
-      <NavigationContainer> 
+       <SafeAreaProvider>
+         <NavigationContainer ref={navigationRef}> 
         <PushInit />
         <Stack.Navigator>
           <Stack.Screen name="Main" options={{ headerShown: false }}>
@@ -187,14 +189,16 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AppAlertProvider>
-      <AuthProvider>
-        <CategoryProvider>
-          <CartProvider>
-            <AppContent />
-          </CartProvider>
-        </CategoryProvider>
-      </AuthProvider>
-    </AppAlertProvider>
+    <KeyboardProvider>
+      <AppAlertProvider>
+        <AuthProvider>
+          <CategoryProvider>
+            <CartProvider>
+              <AppContent />
+            </CartProvider>
+          </CategoryProvider>
+        </AuthProvider>
+      </AppAlertProvider>
+    </KeyboardProvider>
   );
 }
