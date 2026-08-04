@@ -37,6 +37,13 @@ import { fetchUpdateDecision, UpdateDecision } from './src/utils/updateCheck';
 import UpdateGate from './src/screens/UpdateGate';
 import { navigationRef } from './src/utils/navigation';
 
+// Lets the Account screen toggle whether the floating chat assistant is shown.
+export const ChatFabContext = React.createContext<{
+  hidden: boolean;
+  setHidden: (value: boolean) => void;
+}>({ hidden: false, setHidden: () => {} });
+
+const FAB_HIDDEN_KEY = 'chatbot_fab_hidden';
 const Stack = createNativeStackNavigator();
 
 /**
@@ -77,6 +84,38 @@ function AppContent() {
       void fetchUpdateDecision().then(setUpdateDecision).catch(() => setUpdateDecision({ kind: "none" }));
     }
   }, [onboardingLoaded, loading]);
+
+  // Track the active tab + current stack screen so we can decide whether to
+  // show the floating chat assistant. Must be declared before any early
+  // return to comply with the Rules of Hooks. It should only appear on the
+  // home, search, cart and account tabs (and not on other stacked screens).
+  const [activeTab, setActiveTab] = useState('home');
+  const [currentRouteName, setCurrentRouteName] = useState('Main');
+  const [chatFabHidden, setChatFabHiddenState] = useState(false);
+  const TABS_WITH_CHAT = ['home', 'search', 'cart', 'account'];
+
+  // Load the user's preference for hiding the chat FAB from storage.
+  React.useEffect(() => {
+    void storage.getItem(FAB_HIDDEN_KEY).then((v) => {
+      if (v === 'true') setChatFabHiddenState(true);
+    });
+  }, []);
+
+  const setChatFabHidden = React.useCallback((value: boolean) => {
+    setChatFabHiddenState(value);
+    void storage.setItem(FAB_HIDDEN_KEY, value ? 'true' : 'false');
+  }, []);
+
+  // Fired on every navigation state change; reliably reflects the focused
+  // stack route so we can hide the FAB on non-main screens.
+  const handleNavigationStateChange = React.useCallback(() => {
+    setCurrentRouteName(navigationRef.current?.getCurrentRoute()?.name ?? 'Main');
+  }, []);
+
+  const showChat =
+    currentRouteName === 'Main' &&
+    TABS_WITH_CHAT.includes(activeTab) &&
+    !chatFabHidden;
 
   // Load onboarding status from storage on mount
   useEffect(() => {
@@ -153,12 +192,20 @@ function AppContent() {
   ];
 
   return (
+       <ChatFabContext.Provider value={{ hidden: chatFabHidden, setHidden: setChatFabHidden }}>
        <SafeAreaProvider>
-         <NavigationContainer ref={navigationRef}> 
+         <NavigationContainer ref={navigationRef} onStateChange={handleNavigationStateChange}>
         <PushInit />
         <Stack.Navigator>
           <Stack.Screen name="Main" options={{ headerShown: false }}>
-            {({ navigation }) => <BottomNav routes={routes} navigation={navigation} />}
+            {({ navigation }) => (
+              <BottomNav
+                routes={routes}
+                navigation={navigation}
+                active={activeTab}
+                onActiveChange={setActiveTab}
+              />
+            )}
           </Stack.Screen>
           <Stack.Screen name="ProductDetails" component={require('./src/screens/ProductDetails').default} options={{ headerShown: false }} />
           <Stack.Screen name="CategoriesList" component={Categories} options={{ headerShown: false }} />
@@ -179,11 +226,12 @@ function AppContent() {
           </Stack.Screen>
         </Stack.Navigator>
       </NavigationContainer>
-      <FullscreenAd />
-      <PopupAd />
-      <ChatBotLauncher />
-      <StatusBar style="dark" />
+       <FullscreenAd />
+       <PopupAd />
+       {showChat ? <ChatBotLauncher /> : null}
+       <StatusBar style="dark" />
     </SafeAreaProvider>
+    </ChatFabContext.Provider>
   );
 }
 

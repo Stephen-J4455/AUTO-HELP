@@ -10,6 +10,7 @@ import { APP_VERSION } from '../utils/appVersion';
 import { DEVICE_CORNER_RADIUS } from '../utils/device';
 import { useStoreSettings } from '../utils/remoteContent';
 import { openNotificationSettings } from '../utils/pushNotifications';
+import { ChatFabContext } from '../../App';
 
 type Profile = {
   fullName: string;
@@ -26,6 +27,7 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
   const radius = DEVICE_CORNER_RADIUS;
   const { show: showAlert } = useAppAlert();
   const { settings } = useStoreSettings();
+  const { hidden: chatHidden, setHidden: setChatHidden } = React.useContext(ChatFabContext);
   const [signingOut, setSigningOut] = React.useState(false);
   const [savingProfile, setSavingProfile] = React.useState(false);
   const [profile, setProfile] = React.useState<Profile>({ fullName: '', phone: '', notifications: true });
@@ -265,6 +267,22 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
             <Switch
               value={profile.notifications}
               onValueChange={(value) => setProfile((prev) => ({ ...prev, notifications: value }))}
+              trackColor={{ false: '#b0b0b0', true: colors.primary }}
+            />
+          </View>
+          <View style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
+                <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={{ color: colors.text, fontWeight: '700' }}>AI assistant button</Text>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>Show floating chat button</Text>
+              </View>
+            </View>
+            <Switch
+              value={!chatHidden}
+              onValueChange={(value) => setChatHidden(!value)}
               trackColor={{ false: '#b0b0b0', true: colors.primary }}
             />
           </View>

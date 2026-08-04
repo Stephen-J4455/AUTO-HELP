@@ -32,7 +32,7 @@ type Props = {
 
 const GREETING: ChatMessage = {
   role: 'assistant',
-  content: "Hi! 👋 I'm the Auto Help GH assistant. Ask me about parts, categories, vehicle fitment or how to order. I can also show you products and vehicles — just tap a card to open it.",
+  content: "Hi! 👋 I'm the Auto Help GH assistant. Ask me about parts, categories, vehicle fitment or how to order.",
 };
 
 export default function ChatBot({ visible, onClose, model, systemPrompt, storeName }: Props) {
@@ -140,20 +140,20 @@ export default function ChatBot({ visible, onClose, model, systemPrompt, storeNa
           behavior="padding"
           keyboardVerticalOffset={10}
         >
-          <View style={[styles.header, { backgroundColor: colors.surface, borderColor: colors.background }]}>
-            <View style={[styles.headerIcon, { backgroundColor: `${colors.primary}18` }]}>
-              <Ionicons name="chatbubble-ellipses" size={20} color={colors.primary} />
-            </View>
-            <Text style={[styles.headerTitle, { color: colors.text }]}>AI Assistant</Text>
-            <View style={styles.headerActions}>
-              <TouchableOpacity onPress={clearChat} hitSlop={8} style={styles.headerActionBtn}>
-                <Ionicons name="trash-outline" size={20} color={colors.muted} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={onClose} hitSlop={10} style={styles.closeBtn}>
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-          </View>
+           <View style={[styles.header, { backgroundColor: colors.background, borderColor: colors.background }]}>
+             <TouchableOpacity onPress={onClose} hitSlop={10} style={styles.backBtn}>
+               <Ionicons name="arrow-back" size={24} color={colors.text} />
+             </TouchableOpacity>
+             <View style={[styles.headerIcon, { backgroundColor: `${colors.primary}18` }]}>
+               <Ionicons name="chatbubble-ellipses" size={20} color={colors.primary} />
+             </View>
+             <Text style={[styles.headerTitle, { color: colors.text }]}>Autobot</Text>
+             <View style={styles.headerActions}>
+               <TouchableOpacity onPress={clearChat} hitSlop={8} style={styles.headerActionBtn}>
+                 <Ionicons name="brush-outline" size={20} color={colors.muted} />
+               </TouchableOpacity>
+             </View>
+           </View>
 
           <FlatList
             ref={listRef}
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: '800', marginLeft: 12, flex: 1 },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
   headerActionBtn: { padding: 4, marginRight: 4 },
-  closeBtn: { padding: 4 },
+  backBtn: { padding: 4, marginRight: 4 },
   list: { padding: 16, gap: 10 },
   bubbleRow: { flexDirection: 'row' },
   rowUser: { justifyContent: 'flex-end' },
@@ -293,9 +293,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 18,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    maxHeight: 100,
+    height: 52,
     fontSize: 14,
+    textAlignVertical: 'center',
   },
   sendBtn: {
     width: 42,

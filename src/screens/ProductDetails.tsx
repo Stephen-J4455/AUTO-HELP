@@ -14,12 +14,13 @@ import {
   TextInput,
   GestureResponderEvent,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useTheme } from '../theme';
 import { supabase } from '../supabase/supabase';
 import { useCart } from '../context/Cart';
 import { useAuth } from '../context/Auth';
 import { useAppAlert } from '../components/AppAlert';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { getProductImageUri, toPublicProductImageUrl } from '../utils/productImages';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { formatCedis } from '../utils/currency';
@@ -438,65 +439,72 @@ export default function ProductDetails({ route, navigation }: any) {
               style={styles.backdropTouchable}
               onPress={() => setReviewModalVisible(false)}
             />
-            <View 
-              style={[styles.modalContainer, { backgroundColor: colors.background }]}
-              onStartShouldSetResponder={() => true}
-              onTouchStart={(e) => {
-                modalStartY.current = e.nativeEvent.pageY;
-              }}
-              onTouchEnd={(e) => {
-                const endY = e.nativeEvent.pageY;
-                if (endY - modalStartY.current > 80) {
-                  setReviewModalVisible(false);
-                }
-              }}
+            <KeyboardAvoidingView
+              behavior="padding"
+              keyboardVerticalOffset={10}
+              style={styles.modalKav}
             >
-              <View style={[styles.modalHandle, { backgroundColor: colors.muted }]} />
-              
-              <ScrollView 
-                style={styles.modalContent} 
-                showsVerticalScrollIndicator={false} 
-                scrollEnabled={true}
-                nestedScrollEnabled={true}
+              <SafeAreaView
+                edges={['bottom']}
+                style={[styles.modalContainer, { backgroundColor: colors.background }]}
+                onStartShouldSetResponder={() => true}
+                onTouchStart={(e) => {
+                  modalStartY.current = e.nativeEvent.pageY;
+                }}
+                onTouchEnd={(e) => {
+                  const endY = e.nativeEvent.pageY;
+                  if (endY - modalStartY.current > 80) {
+                    setReviewModalVisible(false);
+                  }
+                }}
               >
-                <Text style={[styles.formLabel, { color: colors.text }]}>Your Rating</Text>
-                <View style={styles.ratingSelector}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <TouchableOpacity
-                      key={star}
-                      onPress={() => setReviewForm({ ...reviewForm, rating: star })}
-                    >
-                      <Text style={[styles.starButton, { color: star <= reviewForm.rating ? colors.primary : colors.muted }]}>★</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <Text style={[styles.ratingValue, { color: colors.text }]}>{reviewForm.rating} out of 5</Text>
-
-                <Text style={[styles.formLabel, { color: colors.text, marginTop: 20 }]}>Your Review</Text>
-                <TextInput
-                  style={[styles.textAreaInput, { borderColor: colors.muted, color: colors.text }]}
-                  placeholder="Share your experience with this product..."
-                  placeholderTextColor={colors.muted}
-                  value={reviewForm.body}
-                  onChangeText={(text) => setReviewForm({ ...reviewForm, body: text })}
-                  multiline
-                  numberOfLines={6}
-                  maxLength={500}
-                  textAlignVertical="top"
-                />
-                <Text style={[styles.charCount, { color: colors.muted }]}>{reviewForm.body.length}/500</Text>
-
-                <TouchableOpacity
-                  style={[styles.submitBtn, { backgroundColor: colors.primary, opacity: submitting ? 0.6 : 1 }]}
-                  onPress={handleSubmitReview}
-                  disabled={submitting}
+                <View style={[styles.modalHandle, { backgroundColor: colors.muted }]} />
+                
+                <ScrollView 
+                  style={styles.modalContent} 
+                  showsVerticalScrollIndicator={false} 
+                  scrollEnabled={true}
+                  nestedScrollEnabled={true}
                 >
-                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>
-                    {submitting ? 'Submitting...' : 'Submit Review'}
-                  </Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
+                  <Text style={[styles.formLabel, { color: colors.text }]}>Your Rating</Text>
+                  <View style={styles.ratingSelector}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <TouchableOpacity
+                        key={star}
+                        onPress={() => setReviewForm({ ...reviewForm, rating: star })}
+                      >
+                        <Text style={[styles.starButton, { color: star <= reviewForm.rating ? colors.primary : colors.muted }]}>★</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={[styles.ratingValue, { color: colors.text }]}>{reviewForm.rating} out of 5</Text>
+
+                  <Text style={[styles.formLabel, { color: colors.text, marginTop: 20 }]}>Your Review</Text>
+                  <TextInput
+                    style={[styles.textAreaInput, { borderColor: colors.muted, color: colors.text }]}
+                    placeholder="Share your experience with this product..."
+                    placeholderTextColor={colors.muted}
+                    value={reviewForm.body}
+                    onChangeText={(text) => setReviewForm({ ...reviewForm, body: text })}
+                    multiline
+                    numberOfLines={6}
+                    maxLength={500}
+                    textAlignVertical="top"
+                  />
+                  <Text style={[styles.charCount, { color: colors.muted }]}>{reviewForm.body.length}/500</Text>
+
+                  <TouchableOpacity
+                    style={[styles.submitBtn, { backgroundColor: colors.primary, opacity: submitting ? 0.6 : 1 }]}
+                    onPress={handleSubmitReview}
+                    disabled={submitting}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>
+                      {submitting ? 'Submitting...' : 'Submit Review'}
+                    </Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </SafeAreaView>
+            </KeyboardAvoidingView>
           </View>
       </Modal>
     </View>
@@ -649,6 +657,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     paddingTop: 12,
   },
+  flex: { flex: 1 },
+  modalKav: { width: '100%' },
   modalHandle: { 
     width: 40, 
     height: 4, 

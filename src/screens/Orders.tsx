@@ -86,10 +86,7 @@ export default function Orders({ navigation }: { navigation: any }) {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>My Orders</Text>
-        <Text style={[styles.headerSub, { color: colors.muted }]}>Track and review your purchases</Text>
-      </View>
+     
       <FlatList
         data={orders}
         keyExtractor={(item) => item.id}
@@ -162,9 +159,6 @@ export default function Orders({ navigation }: { navigation: any }) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
-  header: { paddingHorizontal: 16, paddingTop: isMobile ? 0 : 18, paddingBottom: 8 },
-  headerTitle: { fontSize: 26, fontWeight: '900' },
-  headerSub: { fontSize: 13, fontWeight: '600', marginTop: 2 },
   list: { padding: 16, paddingTop: 8, paddingBottom: 24, gap: 12 },
   card: {
     borderRadius: 16,

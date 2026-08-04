@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable, Image, TextInput, ImageBackground, Platform, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Pressable, Image, TextInput, ImageBackground, Platform, ActivityIndicator, ScrollView } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useTheme } from "../theme";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/Auth";
@@ -92,6 +93,12 @@ export default function AuthScreen() {
         style={styles.imageBackground}
       >
         <View style={styles.blendBackground}>
+          <KeyboardAvoidingView style={styles.kav} behavior="padding" keyboardVerticalOffset={10}>
+            <ScrollView
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
           {isLogin ? (
             <View style={styles.loginContainer}>
               <Text style={[styles.text, { color: colors.surface }]}>
@@ -243,6 +250,8 @@ export default function AuthScreen() {
               </Pressable>
             </View>
           )}
+            </ScrollView>
+          </KeyboardAvoidingView>
         </View>
       </ImageBackground>
     </View>
@@ -257,6 +266,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.7)",
     width: "100%",
+  },
+  kav: {
+    flex: 1,
+    width: "100%",
+  },
+  scrollContent: {
+    flexGrow: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 20,
   },
   text: { fontSize: 34, fontWeight: "bold" },
   loginContainer: {

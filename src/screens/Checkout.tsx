@@ -138,6 +138,7 @@ export default function Checkout({ navigation }: { navigation: any }) {
   const [locations, setLocations] = useState<DeliveryLocation[]>([]);
   const [locationsLoading, setLocationsLoading] = useState(true);
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+  const [locationModal, setLocationModal] = useState(false);
   const [payOnDelivery, setPayOnDelivery] = useState(false);
 
   // Total product weight for weight-based delivery pricing.
@@ -206,7 +207,6 @@ export default function Checkout({ navigation }: { navigation: any }) {
       } else if (mounted) {
         const rows = (data as DeliveryLocation[]) || [];
         setLocations(rows);
-        if (rows.length) setSelectedLocationId(rows[0].id);
       }
       if (mounted) setLocationsLoading(false);
     }
@@ -573,43 +573,44 @@ export default function Checkout({ navigation }: { navigation: any }) {
               <Text style={{ color: colors.muted, fontSize: 13 }}>
                 No delivery locations are available right now. Please try again later.
               </Text>
+            ) : selectedLocation ? (
+              <View style={[styles.addressCard, { borderColor: colors.primary, backgroundColor: `${colors.primary}12` }]}>
+                <View style={styles.addressHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+                    <Text style={{ color: colors.text, fontWeight: '800' }}>{selectedLocation.name}</Text>
+                  </View>
+                  <Text style={{ color: colors.primary, fontWeight: '800' }}>{formatCedis(deliveryFee)}</Text>
+                </View>
+                <View style={{ marginTop: 6, marginLeft: 26 }}>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>
+                    {formatCedis(selectedLocation.base_price)} base + {formatCedis(selectedLocation.price_per_kg)}/kg × {totalWeightKg.toFixed(2)}kg
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.secondaryBtn, { backgroundColor: colors.background, marginTop: 10 }]}
+                  onPress={() => setLocationModal(true)}
+                >
+                  <Ionicons name="swap-horizontal" size={18} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontWeight: '800' }}>Change location</Text>
+                </TouchableOpacity>
+              </View>
             ) : (
-              <FlatList
-                data={locations}
-                keyExtractor={(item) => item.id}
-                scrollEnabled={false}
-                showsVerticalScrollIndicator={false}
-                renderItem={({ item }) => {
-                  const active = item.id === selectedLocationId;
-                  const fee = Number(item.base_price || 0) + Number(item.price_per_kg || 0) * totalWeightKg;
-                  return (
-                    <TouchableOpacity
-                      style={[
-                        styles.addressCard,
-                        {
-                          borderColor: active ? colors.primary : colors.background,
-                          backgroundColor: active ? `${colors.primary}12` : colors.background,
-                        },
-                      ]}
-                      onPress={() => setSelectedLocationId(item.id)}
-                    >
-                      <View style={styles.addressHeader}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Ionicons name={active ? "checkmark-circle" : "ellipse-outline"} size={18} color={colors.primary} />
-                          <Text style={{ color: colors.text, fontWeight: '800' }}>{item.name}</Text>
-                        </View>
-                        <Text style={{ color: colors.primary, fontWeight: '800' }}>{formatCedis(fee)}</Text>
-                      </View>
-                      <View style={{ marginTop: 6, marginLeft: 26 }}>
-                        <Text style={{ color: colors.muted, fontSize: 12 }}>
-                          {formatCedis(item.base_price)} base + {formatCedis(item.price_per_kg)}/kg × {totalWeightKg.toFixed(2)}kg
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                }}
-                ListEmptyComponent={<Text style={{ color: colors.muted }}><Ionicons name="information-circle-outline" size={14} color={colors.muted} /> No locations yet.</Text>}
-              />
+              <View>
+                <View style={[styles.emptyLocation, { backgroundColor: colors.background }]}>
+                  <Ionicons name="location-outline" size={28} color={colors.muted} />
+                  <Text style={{ color: colors.muted, fontSize: 13, marginTop: 6, textAlign: 'center' }}>
+                    No delivery location selected. Please select a location to continue.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.secondaryBtn, { backgroundColor: colors.background, borderWidth: 2, borderColor: colors.primary, marginTop: 10 }]}
+                  onPress={() => setLocationModal(true)}
+                >
+                  <Ionicons name="add-circle" size={20} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontWeight: '800' }}>Select delivery location</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
 
@@ -822,7 +823,7 @@ export default function Checkout({ navigation }: { navigation: any }) {
         </>
       )}
       <Modal visible={Boolean(paystackHtml)} animationType="slide" onRequestClose={() => setPaystackHtml(null)}>
-        <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: 40 }}>
           <View style={[styles.inlineHeader, { borderBottomColor: colors.background }]}>
             <Text style={[styles.inlineTitle, { color: colors.text }]}>Paystack Checkout</Text>
             <TouchableOpacity onPress={() => setPaystackHtml(null)} style={styles.inlineCloseBtn}>
@@ -843,6 +844,51 @@ export default function Checkout({ navigation }: { navigation: any }) {
               )}
             />
           ) : null}
+        </View>
+      </Modal>
+      <Modal visible={locationModal} animationType="slide" onRequestClose={() => setLocationModal(false)}>
+        <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: 40 }}>
+          <View style={[styles.inlineHeader, { borderBottomColor: colors.background }]}>
+            <Text style={[styles.inlineTitle, { color: colors.text }]}>Select delivery location</Text>
+            <TouchableOpacity onPress={() => setLocationModal(false)} style={styles.inlineCloseBtn}>
+              <Ionicons name="close" size={22} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 16 }} showsVerticalScrollIndicator={false}>
+            {locations.map((item) => {
+              const active = item.id === selectedLocationId;
+              const fee = Number(item.base_price || 0) + Number(item.price_per_kg || 0) * totalWeightKg;
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[
+                    styles.addressCard,
+                    {
+                      borderColor: active ? colors.primary : colors.background,
+                      backgroundColor: active ? `${colors.primary}12` : colors.background,
+                    },
+                  ]}
+                  onPress={() => {
+                    setSelectedLocationId(item.id);
+                    setLocationModal(false);
+                  }}
+                >
+                  <View style={styles.addressHeader}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Ionicons name={active ? "checkmark-circle" : "ellipse-outline"} size={18} color={colors.primary} />
+                      <Text style={{ color: colors.text, fontWeight: '800' }}>{item.name}</Text>
+                    </View>
+                    <Text style={{ color: colors.primary, fontWeight: '800' }}>{formatCedis(fee)}</Text>
+                  </View>
+                  <View style={{ marginTop: 6, marginLeft: 26 }}>
+                    <Text style={{ color: colors.muted, fontSize: 12 }}>
+                      {formatCedis(item.base_price)} base + {formatCedis(item.price_per_kg)}/kg × {totalWeightKg.toFixed(2)}kg
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -890,6 +936,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     marginBottom: 10,
+  },
+  emptyLocation: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    paddingVertical: 20,
+    paddingHorizontal: 12,
   },
   podRow: {
     flexDirection: 'row',

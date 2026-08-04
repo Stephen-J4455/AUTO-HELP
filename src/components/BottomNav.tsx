@@ -14,8 +14,23 @@ type Route = {
   component: React.ComponentType<any>;
 };
 
-export default function BottomNav({ routes, navigation }: { routes: Route[]; navigation?: any }) {
-  const [active, setActive] = useState(routes[0]?.key || '');
+export default function BottomNav({
+  routes,
+  navigation,
+  active: activeProp,
+  onActiveChange,
+}: {
+  routes: Route[];
+  navigation?: any;
+  active?: string;
+  onActiveChange?: (key: string) => void;
+}) {
+  const [internalActive, setInternalActive] = useState(routes[0]?.key || '');
+  const active = activeProp ?? internalActive;
+  const setActive = (key: string) => {
+    if (onActiveChange) onActiveChange(key);
+    else setInternalActive(key);
+  };
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const route = useRoute<any>();

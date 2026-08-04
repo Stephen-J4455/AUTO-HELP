@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "AUTO-HELP-GH",
+    "name": "Auto Help GH",
     "slug": "AUTO-HELP-GH",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -41,7 +41,24 @@
     "scheme": "autohelpgh",
     "plugins": [
       "expo-font",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#E6F4FE",
+          "android": {
+            "image": "./assets/icon.png",
+            "resizeMode": "contain",
+            "backgroundColor": "#E6F4FE"
+          },
+          "ios": {
+            "image": "./assets/icon.png",
+            "resizeMode": "contain",
+            "backgroundColor": "#E6F4FE"
+          }
+        }
+      ],
       "expo-status-bar",
       "expo-web-browser",
       [
