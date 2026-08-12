@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — AutoHelp Gh</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0B0C10;
+    --panel:#14213D;
+    --panel-2:#1B2A4A;
+    --paper:#E9E6DD;
+    --paper-dim:#c9c6bc;
+    --hazard:#FCA311;
+    --hazard-dim:#8a6115;
+    --line: rgba(233,230,221,0.14);
+    --ok:#6FCF97;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:'Inter',sans-serif;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto;}
+    *{animation-duration:0.001ms !important; transition-duration:0.001ms !important;}
+  }
+
+  a{color:var(--hazard);}
+  a:focus-visible, button:focus-visible, .toc-link:focus-visible{
+    outline:2px solid var(--hazard);
+    outline-offset:3px;
+  }
+
+  .mono{font-family:'IBM Plex Mono',monospace;}
+
+  /* Hazard stripe — signature motif, used sparingly */
+  .hazard-strip{
+    height:10px;
+    background: repeating-linear-gradient(
+      135deg,
+      var(--hazard),
+      var(--hazard) 12px,
+      var(--ink) 12px,
+      var(--ink) 24px
+    );
+  }
+
+  header.hero{
+    background: radial-gradient(circle at 15% 0%, #1B2A4A 0%, #0B0C10 62%);
+    padding: 4.5rem 1.5rem 3rem;
+    position:relative;
+    border-bottom:1px solid var(--line);
+  }
+  .hero-inner{
+    max-width:920px;
+    margin:0 auto;
+  }
+  .tag-label{
+    display:inline-flex;
+    align-items:center;
+    gap:.6rem;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.78rem;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--hazard);
+    border:1px solid var(--hazard-dim);
+    background:rgba(252,163,17,0.06);
+    padding:.4rem .8rem;
+    border-radius:2px;
+  }
+  .tag-label::before{
+    content:"";
+    width:8px;height:8px;
+    background:var(--hazard);
+    display:inline-block;
+    border-radius:1px;
+  }
+  h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:clamp(2.4rem, 6vw, 3.8rem);
+    letter-spacing:-0.02em;
+    margin:1.1rem 0 .6rem;
+    color:var(--paper);
+  }
+  .hero p.lede{
+    font-size:1.05rem;
+    color:var(--paper-dim);
+    max-width:60ch;
+    margin:0 0 1.6rem;
+  }
+  .specsheet{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:1px;
+    background:var(--line);
+    border:1px solid var(--line);
+    margin-top:2rem;
+    border-radius:3px;
+    overflow:hidden;
+  }
+  .specsheet div{
+    background:#0F1117;
+    padding:.9rem 1rem;
+  }
+  .specsheet .k{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.68rem;
+    text-transform:uppercase;
+    letter-spacing:.1em;
+    color:var(--hazard);
+    margin-bottom:.3rem;
+  }
+  .specsheet .v{
+    font-size:.92rem;
+    color:var(--paper);
+    font-weight:500;
+  }
+
+  /* layout */
+  .layout{
+    max-width:1120px;
+    margin:0 auto;
+    padding:3rem 1.5rem 6rem;
+    display:grid;
+    grid-template-columns:240px 1fr;
+    gap:3rem;
+  }
+  @media (max-width:860px){
+    .layout{grid-template-columns:1fr; padding-top:2rem;}
+    nav.toc{position:static; margin-bottom:1rem;}
+  }
+
+  nav.toc{
+    position:sticky;
+    top:2rem;
+    align-self:start;
+    max-height:calc(100vh - 4rem);
+    overflow-y:auto;
+  }
+  nav.toc .toc-title{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.7rem;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--paper-dim);
+    margin-bottom:.9rem;
+    padding-bottom:.6rem;
+    border-bottom:1px solid var(--line);
+  }
+  nav.toc ol{
+    list-style:none;
+    margin:0;
+    padding:0;
+    counter-reset: bin;
+  }
+  nav.toc li{counter-increment: bin;}
+  .toc-link{
+    display:flex;
+    gap:.6rem;
+    align-items:baseline;
+    text-decoration:none;
+    color:var(--paper-dim);
+    font-size:.88rem;
+    padding:.45rem 0;
+    border-bottom:1px dashed transparent;
+    transition:color .15s ease, border-color .15s ease;
+  }
+  .toc-link:hover{color:var(--paper); border-color:var(--line);}
+  .toc-link .bin{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.72rem;
+    color:var(--hazard);
+    min-width:2.4em;
+  }
+
+  main{min-width:0;}
+
+  section.entry{
+    border:1px solid var(--line);
+    border-radius:4px;
+    margin-bottom:1.4rem;
+    background:linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0));
+    scroll-margin-top:2rem;
+    overflow:hidden;
+  }
+  .entry-tab{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    padding:.85rem 1.3rem;
+    background:#0F1117;
+    border-bottom:1px solid var(--line);
+  }
+  .entry-tab .bin-code{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.72rem;
+    letter-spacing:.1em;
+    color:var(--hazard);
+  }
+  .entry-tab h2{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:1.28rem;
+    margin:.15rem 0 0;
+    font-weight:600;
+    color:var(--paper);
+  }
+  .entry-body{
+    padding:1.3rem 1.3rem 1.6rem;
+    color:var(--paper-dim);
+    font-size:.98rem;
+  }
+  .entry-body p{margin:0 0 .9rem;}
+  .entry-body ul{margin:0 0 .9rem; padding-left:1.2rem;}
+  .entry-body li{margin-bottom:.45rem;}
+  .entry-body strong{color:var(--paper); font-weight:600;}
+  .entry-body a{text-underline-offset:3px;}
+
+  .pill-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:.5rem;
+    margin:.4rem 0 1rem;
+  }
+  .pill{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.72rem;
+    background:rgba(252,163,17,0.08);
+    border:1px solid var(--hazard-dim);
+    color:var(--hazard);
+    padding:.25rem .55rem;
+    border-radius:2px;
+  }
+
+  .data-table{
+    width:100%;
+    border-collapse:collapse;
+    margin:.5rem 0 1rem;
+    font-size:.9rem;
+  }
+  .data-table th{
+    text-align:left;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.7rem;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--hazard);
+    padding:.5rem .6rem;
+    border-bottom:1px solid var(--line);
+  }
+  .data-table td{
+    padding:.55rem .6rem;
+    border-bottom:1px solid var(--line);
+    color:var(--paper-dim);
+    vertical-align:top;
+  }
+  .data-table tr:last-child td{border-bottom:none;}
+
+  .callout{
+    border-left:3px solid var(--hazard);
+    background:rgba(252,163,17,0.05);
+    padding:.9rem 1rem;
+    border-radius:0 3px 3px 0;
+    font-size:.92rem;
+    margin:.3rem 0 1rem;
+  }
+
+  footer{
+    border-top:1px solid var(--line);
+    padding:3rem 1.5rem 4rem;
+  }
+  .footer-inner{
+    max-width:920px;
+    margin:0 auto;
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:space-between;
+    gap:2rem;
+  }
+  .footer-inner h3{
+    font-family:'Space Grotesk',sans-serif;
+    margin:0 0 .6rem;
+    color:var(--paper);
+    font-size:1rem;
+  }
+  .footer-inner p, .footer-inner a{
+    color:var(--paper-dim);
+    font-size:.9rem;
+  }
+  .back-top{
+    display:inline-block;
+    margin-top:2.5rem;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:.78rem;
+    color:var(--hazard);
+    text-decoration:none;
+    letter-spacing:.08em;
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-inner">
+    <span class="tag-label">Document On File</span>
+    <h1>Privacy Policy</h1>
+    <p class="lede">How AutoHelp Gh collects, uses, and protects your information when you shop for auto parts, book delivery or pickup, and connect with registered stores on our app.</p>
+
+    <div class="specsheet">
+      <div>
+        <div class="k">Effective</div>
+        <div class="v">12 Aug 2026</div>
+      </div>
+      <div>
+        <div class="k">Last reviewed</div>
+        <div class="v">12 Aug 2026</div>
+      </div>
+      <div>
+        <div class="k">Applies to</div>
+        <div class="v">AutoHelp Gh App &amp; Web</div>
+      </div>
+      <div>
+        <div class="k">Jurisdiction</div>
+        <div class="v">Republic of Ghana</div>
+      </div>
+    </div>
+  </div>
+</header>
+<div class="hazard-strip" role="presentation"></div>
+
+<div class="layout">
+  <nav class="toc" aria-label="Policy sections">
+    <div class="toc-title">Shelf Index</div>
+    <ol>
+      <li><a class="toc-link" href="#collect"><span class="bin mono">01</span>What we collect</a></li>
+      <li><a class="toc-link" href="#use"><span class="bin mono">02</span>How we use it</a></li>
+      <li><a class="toc-link" href="#share"><span class="bin mono">03</span>Who we share with</a></li>
+      <li><a class="toc-link" href="#payments"><span class="bin mono">04</span>Payments &amp; Mobile Money</a></li>
+      <li><a class="toc-link" href="#location"><span class="bin mono">05</span>Location &amp; delivery</a></li>
+      <li><a class="toc-link" href="#retention"><span class="bin mono">06</span>How long we keep it</a></li>
+      <li><a class="toc-link" href="#security"><span class="bin mono">07</span>Keeping it secure</a></li>
+      <li><a class="toc-link" href="#rights"><span class="bin mono">08</span>Your rights</a></li>
+      <li><a class="toc-link" href="#children"><span class="bin mono">09</span>Children</a></li>
+      <li><a class="toc-link" href="#changes"><span class="bin mono">10</span>Policy changes</a></li>
+      <li><a class="toc-link" href="#contact"><span class="bin mono">11</span>Contact us</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <section class="entry" id="collect">
+      <div class="entry-tab">
+        <h2>What we collect</h2>
+        <span class="bin-code mono">BIN 01</span>
+      </div>
+      <div class="entry-body">
+        <p>We collect information you give us directly, information created by using the app, and a small amount of device data needed to keep orders running smoothly.</p>
+        <table class="data-table">
+          <tr><th>Category</th><th>Examples</th></tr>
+          <tr><td>Account details</td><td>Full name, phone number, email, password (encrypted), profile photo (optional)</td></tr>
+          <tr><td>Order activity</td><td>Parts searched, vehicles saved to your garage, orders placed, order status, store reviews</td></tr>
+          <tr><td>Delivery details</td><td>Drop-off address, pickup preference, delivery notes</td></tr>
+          <tr><td>Payment metadata</td><td>Payment method used and transaction reference — card and Mobile Money numbers are handled directly by our payment processor, not stored on our servers</td></tr>
+          <tr><td>Device &amp; usage data</td><td>Device type, OS version, app version, crash logs, approximate IP-based location</td></tr>
+          <tr><td>Communications</td><td>Messages to customer support, SMS delivery confirmations, chat with a store</td></tr>
+        </table>
+      </div>
+    </section>
+
+    <section class="entry" id="use">
+      <div class="entry-tab">
+        <h2>How we use it</h2>
+        <span class="bin-code mono">BIN 02</span>
+      </div>
+      <div class="entry-body">
+        <p>Your information keeps the marketplace working end to end — matching your vehicle to the right part, routing orders to the correct store, and getting deliveries to the right door.</p>
+        <ul>
+          <li><strong>Fulfilling orders</strong> — confirming stock with a store, processing payment, arranging delivery or pickup.</li>
+          <li><strong>Compatibility matching</strong> — using your saved vehicle details (make, model, year, VIN where provided) to filter parts that actually fit.</li>
+          <li><strong>Support</strong> — resolving disputes, refunds, and delivery issues you raise with us.</li>
+          <li><strong>Notifications</strong> — order status updates, price drops on saved parts, and account security alerts via push notification or SMS.</li>
+          <li><strong>Safety &amp; fraud prevention</strong> — detecting fake accounts, stolen payment methods, and abuse of the store or courier network.</li>
+          <li><strong>Improving the app</strong> — understanding which parts and stores are searched for most, in aggregate, to improve search and stock coverage.</li>
+        </ul>
+        <div class="callout">We do not use your data to train third-party advertising profiles, and we do not sell your personal information.</div>
+      </div>
+    </section>
+
+    <section class="entry" id="share">
+      <div class="entry-tab">
+        <h2>Who we share with</h2>
+        <span class="bin-code mono">BIN 03</span>
+      </div>
+      <div class="entry-body">
+        <p>AutoHelp Gh is a marketplace, so a limited set of details necessarily passes to the people fulfilling your order.</p>
+        <div class="pill-row">
+          <span class="pill">Registered stores</span>
+          <span class="pill">Delivery couriers</span>
+          <span class="pill">Payment processor</span>
+          <span class="pill">SMS provider</span>
+          <span class="pill">Regulators, if required by law</span>
+        </div>
+        <ul>
+          <li><strong>Stores</strong> receive your order details, contact number, and delivery address to fulfil the order — not your full account history.</li>
+          <li><strong>Delivery partners</strong> receive your name, phone number, and address for the specific order they're carrying.</li>
+          <li><strong>Payment processing</strong> is handled by Paystack; AutoHelp Gh never sees or stores your full card or Mobile Money PIN.</li>
+          <li><strong>SMS providers</strong> (used for order and delivery confirmations) receive your phone number and the message content only.</li>
+          <li>We may disclose information where required by a valid legal request from a Ghanaian court or regulatory authority.</li>
+        </ul>
+        <p>We do not share your data with advertisers or data brokers.</p>
+      </div>
+    </section>
+
+    <section class="entry" id="payments">
+      <div class="entry-tab">
+        <h2>Payments &amp; Mobile Money</h2>
+        <span class="bin-code mono">BIN 04</span>
+      </div>
+      <div class="entry-body">
+        <p>All card and Mobile Money (MTN MoMo, Vodafone Cash, AirtelTigo Money) transactions are processed by Paystack, a licensed payment service provider. When you pay through the app:</p>
+        <ul>
+          <li>Your card number and MoMo PIN are entered directly into Paystack's secure checkout, not into AutoHelp Gh.</li>
+          <li>We receive a transaction reference and status only — enough to confirm your order was paid for.</li>
+          <li>Refunds are issued back to the original payment method through Paystack.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="entry" id="location">
+      <div class="entry-tab">
+        <h2>Location &amp; delivery</h2>
+        <span class="bin-code mono">BIN 05</span>
+      </div>
+      <div class="entry-body">
+        <p>We ask for location access to show nearby stores, estimate delivery time, and route your courier.</p>
+        <ul>
+          <li>Precise GPS location is only used while placing or tracking an active delivery.</li>
+          <li>You can browse and use store pickup without granting location access — you'll just need to enter your area manually.</li>
+          <li>Saved addresses (home, work, garage) are stored so you don't have to re-enter them each time; you can delete these at any time from Account Settings.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="entry" id="retention">
+      <div class="entry-tab">
+        <h2>How long we keep it</h2>
+        <span class="bin-code mono">BIN 06</span>
+      </div>
+      <div class="entry-body">
+        <table class="data-table">
+          <tr><th>Data</th><th>Retention</th></tr>
+          <tr><td>Account profile</td><td>Until you delete your account, plus 30 days</td></tr>
+          <tr><td>Order history</td><td>7 years, for tax and dispute records</td></tr>
+          <tr><td>Support conversations</td><td>2 years from the last message</td></tr>
+          <tr><td>Device &amp; crash logs</td><td>90 days</td></tr>
+        </table>
+        <p>Where you close your account, we remove or anonymize data that isn't legally required for financial record-keeping.</p>
+      </div>
+    </section>
+
+    <section class="entry" id="security">
+      <div class="entry-tab">
+        <h2>Keeping it secure</h2>
+        <span class="bin-code mono">BIN 07</span>
+      </div>
+      <div class="entry-body">
+        <ul>
+          <li>Data in transit is encrypted with TLS; passwords are hashed, never stored in plain text.</li>
+          <li>Access to customer data inside AutoHelp Gh is limited to staff who need it to do their job, with logged access.</li>
+          <li>Payment details never touch our servers — they stay inside Paystack's PCI-DSS compliant systems.</li>
+          <li>If a breach affecting your personal data occurs, we'll notify affected users and the Data Protection Commission as required by law.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="entry" id="rights">
+      <div class="entry-tab">
+        <h2>Your rights</h2>
+        <span class="bin-code mono">BIN 08</span>
+      </div>
+      <div class="entry-body">
+        <p>Under Ghana's Data Protection Act, 2012 (Act 843), and as a matter of our own policy, you can:</p>
+        <ul>
+          <li><strong>Access</strong> a copy of the personal data we hold about you.</li>
+          <li><strong>Correct</strong> inaccurate account or vehicle information directly in the app.</li>
+          <li><strong>Delete</strong> your account and associated personal data, subject to records we're legally required to retain.</li>
+          <li><strong>Withdraw consent</strong> for optional data uses, like marketing notifications, at any time in Settings.</li>
+          <li><strong>Object or complain</strong> to us directly, or to Ghana's Data Protection Commission, if you believe your data has been mishandled.</li>
+        </ul>
+        <p>To exercise any of these, reach out via the contact details in Bin 11 — we aim to respond within 14 days.</p>
+      </div>
+    </section>
+
+    <section class="entry" id="children">
+      <div class="entry-tab">
+        <h2>Children</h2>
+        <span class="bin-code mono">BIN 09</span>
+      </div>
+      <div class="entry-body">
+        <p>AutoHelp Gh is built for licensed drivers, mechanics, and vehicle owners. The app is not directed at children, and we don't knowingly collect personal data from anyone under 18. If we learn a minor has created an account, we'll close it and delete the associated data.</p>
+      </div>
+    </section>
+
+    <section class="entry" id="changes">
+      <div class="entry-tab">
+        <h2>Policy changes</h2>
+        <span class="bin-code mono">BIN 10</span>
+      </div>
+      <div class="entry-body">
+        <p>As AutoHelp Gh adds features — new payment options, new delivery partners, new regions — this policy will be updated to match. Material changes will be flagged in-app before they take effect, and the "Last reviewed" date at the top of this page will always reflect the current version.</p>
+      </div>
+    </section>
+
+    <section class="entry" id="contact">
+      <div class="entry-tab">
+        <h2>Contact us</h2>
+        <span class="bin-code mono">BIN 11</span>
+      </div>
+      <div class="entry-body">
+        <p>Questions, corrections, or data requests can go to our support team:</p>
+        <ul>
+          <li>Email: <a href="mailto:privacy@autohelpgh.com">privacy@autohelpgh.com</a></li>
+          <li>In-app: Settings → Help &amp; Support → Privacy Request</li>
+          <li>Postal: AutoHelp Gh, Accra, Ghana</li>
+        </ul>
+      </div>
+    </section>
+
+    <a class="back-top" href="#top">↑ Back to top of document</a>
+  </main>
+</div>
+
+<div class="hazard-strip" role="presentation"></div>
+<footer>
+  <div class="footer-inner">
+    <div>
+      <h3>AutoHelp Gh</h3>
+      <p>The marketplace connecting Ghanaian drivers to trusted auto parts stores — browse, order, and get it delivered or ready for pickup.</p>
+    </div>
+    <div>
+      <h3>Related documents</h3>
+      <p><a href="#">Terms of Service</a><br><a href="#">Store Partner Agreement</a><br><a href="#">Cookie Notice</a></p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
