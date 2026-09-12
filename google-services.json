@@ -7,12 +7,17 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1035207182617:android:82023d266a863538c79d88",
+        "mobilesdk_app_id": "1:1035207182617:android:ca9fdfaee570d683c79d88",
         "android_client_info": {
-          "package_name": "com.stephenj.autohelpgh"
+          "package_name": "com.stephenj.autohelp"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1035207182617-ut2iop93n1kb24474p94539q2qn0fas1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAzKfxprzX1ez-e-uTfyyDEnJuMH7d0aTg"
@@ -20,7 +25,41 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1035207182617-ut2iop93n1kb24474p94539q2qn0fas1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1035207182617:android:7cc149150271cd52c79d88",
+        "android_client_info": {
+          "package_name": "com.stephenj2.autohelpadmin"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1035207182617-ut2iop93n1kb24474p94539q2qn0fas1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAzKfxprzX1ez-e-uTfyyDEnJuMH7d0aTg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1035207182617-ut2iop93n1kb24474p94539q2qn0fas1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

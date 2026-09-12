@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Auto Help GH",
+    "name": "AutoHelp",
     "slug": "AUTO-HELP-GH",
     "version": "1.0.1",
     "orientation": "portrait",
@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.stephenj.autohelpgh"
+      "bundleIdentifier": "com.stephenj.autohelp"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +18,7 @@
         "monochromeImage": "./assets/icon.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.stephenj.autohelpgh",
+      "package": "com.stephenj.autohelp",
       "googleServicesFile": "./google-services.json",
       "intentFilters": [
         {
