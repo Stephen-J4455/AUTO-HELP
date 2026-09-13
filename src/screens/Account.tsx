@@ -1,5 +1,19 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, TextInput, Switch, TouchableOpacity, Linking } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ActivityIndicator,
+  ScrollView,
+  TextInput,
+  Switch,
+  TouchableOpacity,
+  Linking,
+  Alert,
+  Image,
+  StatusBar,
+} from 'react-native';
 import { useTheme } from '../theme';
 import { useAuth } from '../context/Auth';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,37 +21,47 @@ import { supabase } from '../supabase/supabase';
 import { useAppAlert } from '../components/AppAlert';
 import LoadingScreen from '../components/LoadingScreen';
 import { APP_VERSION } from '../utils/appVersion';
-import { DEVICE_CORNER_RADIUS } from '../utils/device';
 import { useStoreSettings } from '../utils/remoteContent';
 import { openNotificationSettings } from '../utils/pushNotifications';
 import { ChatFabContext } from '../../App';
 
-type Profile = {
-  fullName: string;
-  phone: string;
-  notifications: boolean;
-};
-
 // Overlay being shown: none, the edit-profile page, or the delete-account flow.
 type Overlay = 'none' | 'edit' | 'delete';
 
+// Colored icon circles matching the reference UI palette.
+const ICON_COLORS = {
+  payment: '#34C759',
+  referral: '#00BCD4',
+  notification: '#5856D6',
+  lightmode: '#FF2D55',
+  support: '#AF52DE',
+  delete: '#FF3B30',
+  logout: '#5856D6',
+};
+
 export default function Account({ navigateTo }: { navigateTo?: (name: string, params?: any) => void }) {
   const { colors } = useTheme();
-  const { user, session, signOut, deleteAccount, loading } = useAuth();
-  const radius = DEVICE_CORNER_RADIUS;
+  const { user, signOut, deleteAccount, loading } = useAuth();
   const { show: showAlert } = useAppAlert();
   const { settings } = useStoreSettings();
-  const { hidden: chatHidden, setHidden: setChatHidden } = React.useContext(ChatFabContext);
+
+  // --- State ---
   const [signingOut, setSigningOut] = React.useState(false);
   const [savingProfile, setSavingProfile] = React.useState(false);
-  const [profile, setProfile] = React.useState<Profile>({ fullName: '', phone: '', notifications: true });
+  const [profile, setProfile] = React.useState({ fullName: '', phone: '', notifications: true, lightMode: false });
   const [overlay, setOverlay] = React.useState<Overlay>('none');
   const [showAppLoading, setShowAppLoading] = React.useState(false);
 
-  // Delete-confirmation state: the user must type their exact email.
+  // Chat FAB visibility toggle
+  const { hidden: chatHidden, setHidden: setChatHidden } = React.useContext(ChatFabContext);
+
+  // Delete-confirmation: user must type their exact email.
   const [deleteEmail, setDeleteEmail] = React.useState('');
   const [deleting, setDeleting] = React.useState(false);
 
+  // --- Effects ---
+
+  // Load profile
   React.useEffect(() => {
     let mounted = true;
     async function loadProfile() {
@@ -56,129 +80,82 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
           fullName: data.full_name || '',
           phone: data.phone || '',
           notifications: data.notifications_enabled ?? true,
+          lightMode: false,
         });
       }
     }
     void loadProfile();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [user?.id]);
 
+  // --- Handlers ---
+
   const handleSignOut = async () => {
-    showAlert({
-      title: 'Sign Out',
-      message: 'Are you sure you want to sign out?',
-      buttons: [
-        { text: 'Cancel', onPress: () => {} },
-        {
-          text: 'Sign Out',
-          onPress: async () => {
-            setSigningOut(true);
-            try {
-              await signOut();
-            } catch (error: any) {
-              showAlert({ title: 'Error', message: error.message || 'Failed to sign out' });
-            } finally {
-              setSigningOut(false);
-            }
-          },
-          style: 'destructive',
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          setSigningOut(true);
+          try {
+            await signOut();
+          } catch (error: any) {
+            showAlert({ title: 'Error', message: error.message || 'Failed to sign out' });
+          } finally {
+            setSigningOut(false);
+          }
         },
-      ],
-    });
+      },
+    ]);
   };
 
   const performDelete = async () => {
-    // Guard: the typed email must exactly match the account email.
-    if (deleteEmail.trim().toLowerCase() !== (user?.email || '').trim().toLowerCase()) {
-      showAlert({ title: 'Email does not match', message: 'Please type your email exactly as shown to confirm deletion.' });
+    if (deleteEmail.trim().toLowerCase() !== (user?.email || '').toLowerCase()) {
+      showAlert({
+        title: 'Email mismatch',
+        message: `Type your exact email address (${user?.email}) to confirm deletion.`,
+        buttons: [{ text: 'OK' }],
+      });
       return;
     }
     setDeleting(true);
     try {
       const { error } = await deleteAccount();
       if (error) {
-        showAlert({ title: 'Error', message: error });
-        setDeleting(false);
+        showAlert({ title: 'Error', message: error.message || 'Failed to delete account' });
       }
-      // On success the Auth context clears the session and the app returns
-      // to the guest state — nothing else to do here.
-    } catch (error: any) {
-      showAlert({ title: 'Error', message: error.message || 'Failed to delete account' });
+    } catch (e: any) {
+      showAlert({ title: 'Error', message: e.message || 'Failed to delete account' });
+    } finally {
       setDeleting(false);
     }
   };
 
-  async function saveProfile() {
-    if (!user?.id) return;
+  const saveProfile = async () => {
     setSavingProfile(true);
     try {
-      const { error } = await supabase.from('customer_profiles').upsert(
-        {
-          user_id: user.id,
-          email: user.email,
-          full_name: profile.fullName.trim() || null,
-          phone: profile.phone.trim() || null,
+      const { error } = await supabase
+        .from('customer_profiles')
+        .upsert({
+          user_id: user?.id,
+          full_name: profile.fullName,
+          phone: profile.phone,
           notifications_enabled: profile.notifications,
-        },
-        { onConflict: 'user_id' }
-      );
-      if (error) throw new Error(error.message);
-      showAlert({ title: 'Saved', message: 'Your profile settings were updated.' });
-      setOverlay('none');
-    } catch (error) {
-      showAlert({ title: 'Save failed', message: error instanceof Error ? error.message : 'Could not save profile.' });
+        });
+      if (error) {
+        showAlert({ title: 'Error', message: error.message || 'Failed to save profile' });
+      } else {
+        setOverlay('none');
+        showAlert({ title: 'Success', message: 'Profile updated successfully' });
+      }
+    } catch (e: any) {
+      showAlert({ title: 'Error', message: e.message || 'Failed to save profile' });
     } finally {
       setSavingProfile(false);
     }
-  }
+  };
 
-  if (loading) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
-  if (!session || !user) {
-    return (
-      <View style={[styles.guestWrap, { backgroundColor: colors.background }]}>
-        <View style={[styles.guestIconWrap, { backgroundColor: `${colors.primary}18` }]}>
-          <Ionicons name="person-outline" size={56} color={colors.primary} />
-        </View>
-        <Text style={[styles.guestTitle, { color: colors.text }]}>Welcome to Auto Help GH</Text>
-        <Text style={[styles.guestSubtitle, { color: colors.muted }]}>
-          Log in to track orders, save addresses and manage your profile. You can still browse and shop without an account.
-        </Text>
-        <Pressable
-          style={[styles.guestPrimaryBtn, { backgroundColor: colors.primary }]}
-          onPress={() => navigateTo?.('Auth')}
-        >
-          <Ionicons name="log-in-outline" size={20} color={colors.surface} />
-          <Text style={[styles.guestPrimaryText, { color: colors.surface }]}>Login</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.guestSecondaryBtn, { borderColor: colors.primary }]}
-          onPress={() => navigateTo?.('Auth', { initialMode: 'signup' })}
-        >
-          <Text style={[styles.guestSecondaryText, { color: colors.primary }]}>Create an account</Text>
-        </Pressable>
-        <View style={styles.legalRow}>
-          <Pressable onPress={() => navigateTo?.('PrivacyPolicy')} hitSlop={8}>
-            <Text style={[styles.legalLink, { color: colors.muted }]}>Privacy Policy</Text>
-          </Pressable>
-          <Text style={[styles.legalDivider, { color: colors.muted }]}>•</Text>
-          <Pressable onPress={() => navigateTo?.('Terms')} hitSlop={8}>
-            <Text style={[styles.legalLink, { color: colors.muted }]}>Terms & Conditions</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
-  // The profile card is now read-only; editing happens in a dedicated overlay.
   const initials = (profile.fullName || user.email || '?')
     .split(' ')
     .map((p) => p[0])
@@ -187,305 +164,245 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
     .join('')
     .toUpperCase();
 
+  if (loading) {
+    return <LoadingScreen message="Loading your account…" />;
+  }
+
+  if (!user) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <Ionicons name="log-in-outline" size={48} color={colors.muted} />
+        <Text style={[styles.title, { color: colors.text, marginTop: 12 }]}>Sign in to view your account</Text>
+        <Pressable style={[styles.primaryBtn, { backgroundColor: colors.primary, marginTop: 16 }]} onPress={() => navigateTo?.('Auth')}>
+          <Text style={styles.primaryBtnText}>Sign In</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingTop: StatusBar.currentHeight || 0, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Redesigned profile card */}
-        <View style={[styles.heroCard, { backgroundColor: colors.surface }]}>
-          <View style={[styles.heroBanner, { backgroundColor: `${colors.primary}14` }]}>
+        {/* ===== Profile card ===== */}
+        <View style={[styles.profileCard, { backgroundColor: colors.surface }]}>
+          <View style={styles.profileHeader}>
             <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-              <Text style={[styles.avatarText, { color: colors.surface }]}>{initials || 'A'}</Text>
+              <Text style={styles.avatarText}>{initials || 'A'}</Text>
             </View>
-          </View>
-          <View style={styles.heroBody}>
-            <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
-              {profile.fullName || 'Auto Help Customer'}
-            </Text>
-            <Text style={[styles.email, { color: colors.muted }]} numberOfLines={1}>
-              {user.email}
-            </Text>
-            <Text style={[styles.memberSince, { color: colors.muted }]}>
-              Member since {new Date(user.created_at || Date.now()).toLocaleDateString()}
-            </Text>
-            <View style={[styles.profileMeta, { borderColor: `${colors.primary}22` }]}>
-              <Ionicons name="call-outline" size={15} color={colors.muted} />
-              <Text style={[styles.profileMetaText, { color: colors.text }]} numberOfLines={1}>
-                {profile.phone || 'No phone added'}
+            <View style={styles.profileInfo}>
+              <Text style={[styles.profileName, { color: colors.text }]} numberOfLines={1}>
+                {profile.fullName || 'Auto Help Customer'}
+              </Text>
+              <Text style={[styles.profileEmail, { color: colors.muted }]} numberOfLines={1}>
+                {user.email}
               </Text>
             </View>
+            <TouchableOpacity style={styles.editBtn} onPress={() => setOverlay('edit')} hitSlop={8}>
+              <Ionicons name="create-outline" size={18} color="#fff" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={[styles.cardEditBtn, { backgroundColor: `${colors.primary}14` }]}
-            onPress={() => setOverlay('edit')}
-            hitSlop={8}
-          >
-            <Ionicons name="create-outline" size={20} color={colors.primary} />
-          </TouchableOpacity>
+          <View style={[styles.profileMetaRow, { borderColor: `${colors.primary}22` }]}>
+            <Ionicons name="call-outline" size={14} color={colors.muted} />
+            <Text style={[styles.profileMetaText, { color: colors.text }]} numberOfLines={1}>
+              {profile.phone || 'No phone added'}
+            </Text>
+          </View>
+          <Text style={[styles.memberSince, { color: colors.muted }]}>
+            Member since {new Date(user.created_at || Date.now()).toLocaleDateString()}
+          </Text>
         </View>
 
-        {/* Quick actions */}
-        <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick actions</Text>
-          <TouchableOpacity style={styles.settingRow} onPress={() => navigateTo?.('Orders')}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                <Ionicons name="receipt-outline" size={16} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={{ color: colors.text, fontWeight: '700' }}>My Orders</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>View placed orders</Text>
-              </View>
+        {/* ===== Quick Actions ===== */}
+        <Text style={[styles.sectionHeader, { color: colors.muted }]}>QUICK ACTIONS</Text>
+
+        <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={() => navigateTo?.('Orders')}>
+          <View style={[styles.iconCircle, { backgroundColor: `${colors.primary}18` }]}>
+            <Ionicons name="receipt-outline" size={18} color={colors.primary} />
+          </View>
+          <Text style={[styles.settingLabel, { color: colors.text }]}>My Orders</Text>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={() => navigateTo?.('Notifications')}>
+          <View style={[styles.iconCircle, { backgroundColor: `${colors.primary}18` }]}>
+            <Ionicons name="notifications-outline" size={18} color={colors.primary} />
+          </View>
+          <Text style={[styles.settingLabel, { color: colors.text }]}>Notifications</Text>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </TouchableOpacity>
+
+        <View style={[styles.settingRow, { backgroundColor: colors.surface }]}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.iconCircle, { backgroundColor: `${colors.primary}18` }]}>
+              <Ionicons name="notifications" size={18} color={colors.primary} />
             </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.settingRow} onPress={() => navigateTo?.('Notifications')}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                <Ionicons name="notifications-outline" size={16} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={{ color: colors.text, fontWeight: '700' }}>Notifications</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>View all updates</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-          </TouchableOpacity>
-          <View style={styles.settingRow}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                <Ionicons name="notifications" size={16} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={{ color: colors.text, fontWeight: '700' }}>Push alerts</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>Order updates and alerts</Text>
-              </View>
-            </View>
+            <Text style={[styles.settingLabel, { color: colors.text }]}>Push alerts</Text>
+          </View>
+          <View style={styles.switchContainer}>
             <Switch
               value={profile.notifications}
               onValueChange={(value) => setProfile((prev) => ({ ...prev, notifications: value }))}
               trackColor={{ false: '#b0b0b0', true: colors.primary }}
             />
           </View>
-          <View style={styles.settingRow}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={{ color: colors.text, fontWeight: '700' }}>AI assistant button</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>Show floating chat button</Text>
-              </View>
+        </View>
+
+        <View style={[styles.settingRow, { backgroundColor: colors.surface }]}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.iconCircle, { backgroundColor: `${colors.primary}18` }]}>
+              <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.primary} />
             </View>
+            <Text style={[styles.settingLabel, { color: colors.text }]}>AI assistant button</Text>
+          </View>
+          <View style={styles.switchContainer}>
             <Switch
               value={!chatHidden}
               onValueChange={(value) => setChatHidden(!value)}
               trackColor={{ false: '#b0b0b0', true: colors.primary }}
             />
           </View>
-          <TouchableOpacity
-            style={styles.settingRow}
-            activeOpacity={0.7}
-            onPress={() => void openNotificationSettings()}
-          >
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                <Ionicons name="settings-outline" size={16} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={{ color: colors.text, fontWeight: '700' }}>Notification settings</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>Open system notification settings</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.settingRow} onPress={() => navigateTo?.('Checkout')}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                <Ionicons name="location-outline" size={16} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={{ color: colors.text, fontWeight: '700' }}>Address book</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>Manage shipping addresses</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-          </TouchableOpacity>
         </View>
 
-        {/* Contact support — details are managed from the admin Settings page. */}
-        <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Contact support</Text>
+        {/* ===== Settings ===== */}
+        <Text style={[styles.sectionHeader, { color: colors.muted }]}>SETTINGS</Text>
 
-          {settings.contact_whatsapp ? (
-            <TouchableOpacity
-              style={styles.settingRow}
-              onPress={() =>
-                Linking.openURL(
-                  /https?:\/\//i.test(settings.contact_whatsapp || '')
-                    ? settings.contact_whatsapp!
-                    : `https://wa.me/${settings.contact_whatsapp!.replace(/[^0-9]/g, '')}`,
-                )
-              }
-            >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                  <Ionicons name="logo-whatsapp" size={16} color={colors.primary} />
-                </View>
-                <View>
-                  <Text style={{ color: colors.text, fontWeight: '700' }}>WhatsApp</Text>
-                  <Text style={{ color: colors.muted, fontSize: 12 }}>{settings.contact_whatsapp}</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-            </TouchableOpacity>
-          ) : null}
-
-          {settings.contact_email ? (
-            <TouchableOpacity
-              style={styles.settingRow}
-              onPress={() => Linking.openURL(`mailto:${settings.contact_email}`)}
-            >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                  <Ionicons name="mail-outline" size={16} color={colors.primary} />
-                </View>
-                <View>
-                  <Text style={{ color: colors.text, fontWeight: '700' }}>Email</Text>
-                  <Text style={{ color: colors.muted, fontSize: 12 }}>{settings.contact_email}</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-            </TouchableOpacity>
-          ) : null}
-
-          {settings.contact_phone ? (
-            <TouchableOpacity
-              style={styles.settingRow}
-              onPress={() => Linking.openURL(`tel:${settings.contact_phone!.replace(/[^0-9+]/g, '')}`)}
-            >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                  <Ionicons name="call-outline" size={16} color={colors.primary} />
-                </View>
-                <View>
-                  <Text style={{ color: colors.text, fontWeight: '700' }}>Phone</Text>
-                  <Text style={{ color: colors.muted, fontSize: 12 }}>{settings.contact_phone}</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-            </TouchableOpacity>
-          ) : null}
-
-          {settings.contact_link ? (
-            <TouchableOpacity
-              style={styles.settingRow}
-              onPress={() => Linking.openURL(settings.contact_link!)}
-            >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                  <Ionicons name="link-outline" size={16} color={colors.primary} />
-                </View>
-                <View>
-                  <Text style={{ color: colors.text, fontWeight: '700' }}>
-                    {settings.contact_link_label || 'Website'}
-                  </Text>
-                  <Text style={{ color: colors.muted, fontSize: 12 }}>{settings.contact_link}</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-            </TouchableOpacity>
-          ) : null}
-
-          {[
-            ['social_facebook', 'Facebook', 'logo-facebook', settings.social_facebook],
-            ['social_x', 'X', 'logo-x', settings.social_x],
-            ['social_tiktok', 'TikTok', 'logo-tiktok', settings.social_tiktok],
-            ['social_instagram', 'Instagram', 'logo-instagram', settings.social_instagram],
-            ['social_discord', 'Discord', 'logo-discord', settings.social_discord],
-            ['social_threads', 'Threads', 'logo-threads', settings.social_threads],
-            ['social_twitch', 'Twitch', 'logo-twitch', settings.social_twitch],
-            ['social_telegram', 'Telegram', 'paper-plane', settings.social_telegram],
-          ]
-            .filter((row) => (row[3] as string | null))
-            .map(([key, label, icon, url]) => (
-              <TouchableOpacity
-                key={key as string}
-                style={styles.settingRow}
-                onPress={() => Linking.openURL((url as string) || '')}
-              >
-                <View style={styles.settingLeft}>
-                  <View style={[styles.settingIcon, { backgroundColor: `${colors.primary}18` }]}>
-                    <Ionicons name={icon as any} size={16} color={colors.primary} />
-                  </View>
-                  <View>
-                    <Text style={{ color: colors.text, fontWeight: '700' }}>{label}</Text>
-                    <Text style={{ color: colors.muted, fontSize: 12 }}>{url as string}</Text>
-                  </View>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-              </TouchableOpacity>
-            ))}
-        </View>
-
-        {/* Sign out */}
-        <Pressable
-          style={[
-            styles.signoutButton,
-            { backgroundColor: colors.primary, opacity: signingOut ? 0.6 : 1 },
-          ]}
-          onPress={handleSignOut}
-          disabled={signingOut}
-        >
-          {signingOut ? (
-            <ActivityIndicator color={colors.surface} />
-          ) : (
-            <>
-              <Ionicons name="log-out" size={20} color={colors.surface} />
-              <Text style={[styles.signoutText, { color: colors.surface }]}>Sign Out</Text>
-            </>
-          )}
-        </Pressable>
-
-        {/* Delete account — now at the very bottom, behind a confirmation that
-            requires the user to type their email. */}
-        <TouchableOpacity
-          style={[styles.deleteBtn, { borderColor: `${colors.danger || colors.primary}55` }]}
-          onPress={() => {
-            setDeleteEmail('');
-            setOverlay('delete');
-          }}
-          disabled={deleting}
-        >
-          <Ionicons name="trash-outline" size={18} color={colors.danger || colors.primary} />
-          <Text style={[styles.deleteText, { color: colors.danger || colors.primary }]}>Delete account</Text>
+        <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} activeOpacity={0.7} onPress={() => void openNotificationSettings()}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.iconCircle, { backgroundColor: `${colors.primary}18` }]}>
+              <Ionicons name="settings-outline" size={18} color={colors.primary} />
+            </View>
+            <Text style={[styles.settingLabel, { color: colors.text }]}>Notification settings</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
         </TouchableOpacity>
 
-        <Pressable
-          style={styles.versionButton}
-          onPress={() => setShowAppLoading(true)}
-          hitSlop={10}
-        >
-          <Text style={[styles.versionText, { color: colors.muted }]}>
-            Auto Help GH v{APP_VERSION}
-          </Text>
-        </Pressable>
+        <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={() => navigateTo?.('Checkout')}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.iconCircle, { backgroundColor: `${colors.primary}18` }]}>
+              <Ionicons name="location-outline" size={18} color={colors.primary} />
+            </View>
+            <Text style={[styles.settingLabel, { color: colors.text }]}>Address book</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </TouchableOpacity>
 
-        <View style={styles.legalRow}>
+        {/* ===== Contact Support ===== */}
+        <Text style={[styles.sectionHeader, { color: colors.muted }]}>CONTACT SUPPORT</Text>
+
+        {settings.contact_whatsapp ? (
+          <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={() =>
+            Linking.openURL(
+              /https?:\/\//i.test(settings.contact_whatsapp || '')
+                ? settings.contact_whatsapp!
+                : `https://wa.me/${settings.contact_whatsapp!.replace(/[^0-9]/g, '')}`,
+            )
+          }>
+            <View style={[styles.iconCircle, { backgroundColor: `${ICON_COLORS.support}20` }]}>
+              <Ionicons name="logo-whatsapp" size={18} color={ICON_COLORS.support} />
+            </View>
+            <View style={styles.contactInfo}>
+              <Text style={[styles.settingLabel, { color: colors.text, marginBottom: 2 }]}>WhatsApp</Text>
+              <Text style={[styles.contactSub, { color: colors.muted }]} numberOfLines={1}>{settings.contact_whatsapp}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          </TouchableOpacity>
+        ) : null}
+
+        {settings.contact_email ? (
+          <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={() => Linking.openURL(`mailto:${settings.contact_email}`)}>
+            <View style={[styles.iconCircle, { backgroundColor: `${ICON_COLORS.support}20` }]}>
+              <Ionicons name="mail-outline" size={18} color={ICON_COLORS.support} />
+            </View>
+            <View style={styles.contactInfo}>
+              <Text style={[styles.settingLabel, { color: colors.text, marginBottom: 2 }]}>Email</Text>
+              <Text style={[styles.contactSub, { color: colors.muted }]} numberOfLines={1}>{settings.contact_email}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          </TouchableOpacity>
+        ) : null}
+
+        {settings.contact_phone ? (
+          <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={() => Linking.openURL(`tel:${settings.contact_phone!.replace(/[^0-9+]/g, '')}`)}>
+            <View style={[styles.iconCircle, { backgroundColor: `${ICON_COLORS.support}20` }]}>
+              <Ionicons name="call-outline" size={18} color={ICON_COLORS.support} />
+            </View>
+            <View style={styles.contactInfo}>
+              <Text style={[styles.settingLabel, { color: colors.text, marginBottom: 2 }]}>Phone</Text>
+              <Text style={[styles.contactSub, { color: colors.muted }]} numberOfLines={1}>{settings.contact_phone}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          </TouchableOpacity>
+        ) : null}
+
+        {settings.contact_link ? (
+          <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={() => Linking.openURL(settings.contact_link!)}>
+            <View style={[styles.iconCircle, { backgroundColor: `${ICON_COLORS.support}20` }]}>
+              <Ionicons name="link-outline" size={18} color={ICON_COLORS.support} />
+            </View>
+            <View style={styles.contactInfo}>
+              <Text style={[styles.settingLabel, { color: colors.text, marginBottom: 2 }]}>
+                {settings.contact_link_label || 'Website'}
+              </Text>
+              <Text style={[styles.contactSub, { color: colors.muted }]} numberOfLines={1}>{settings.contact_link}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          </TouchableOpacity>
+        ) : null}
+
+        {settings.social_links ? (
+          (settings.social_links as { label: string; url: string }[]).map((s) => (
+            <TouchableOpacity key={s.label} style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={() => Linking.openURL(s.url)}>
+              <View style={[styles.iconCircle, { backgroundColor: `${ICON_COLORS.support}20` }]}>
+                <Ionicons name="logo-social" size={18} color={ICON_COLORS.support} />
+              </View>
+              <View style={styles.contactInfo}>
+                <Text style={[styles.settingLabel, { color: colors.text, marginBottom: 2 }]}>{s.label}</Text>
+                <Text style={[styles.contactSub, { color: colors.muted }]} numberOfLines={1}>{s.url as string}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+            </TouchableOpacity>
+          ))
+        ) : null}
+
+        {/* ===== Account actions ===== */}
+        <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={() => { setDeleteEmail(''); setOverlay('delete'); }}>
+          <View style={[styles.iconCircle, { backgroundColor: `${ICON_COLORS.delete}20` }]}>
+            <Ionicons name="trash-outline" size={18} color={ICON_COLORS.delete} />
+          </View>
+          <Text style={[styles.settingLabel, { color: colors.text }]}>Delete Account</Text>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.logoutRow, { backgroundColor: colors.surface }]} onPress={handleSignOut} disabled={signingOut}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.iconCircle, { backgroundColor: `${ICON_COLORS.logout}20` }]}>
+              <Ionicons name="log-out" size={18} color={ICON_COLORS.logout} />
+            </View>
+            <Text style={[styles.settingLabel, { color: colors.text }]}>Logout</Text>
+          </View>
+          {signingOut ? <ActivityIndicator size="small" color={colors.muted} /> : <Ionicons name="chevron-forward" size={20} color={colors.muted} />}
+        </TouchableOpacity>
+
+        {/* ===== Footer ===== */}
+        <View style={styles.footerRow}>
           <Pressable onPress={() => navigateTo?.('PrivacyPolicy')} hitSlop={8}>
-            <Text style={[styles.legalLink, { color: colors.muted }]}>Privacy Policy</Text>
+            <Text style={[styles.footerLink, { color: colors.muted }]}>Privacy Policy</Text>
           </Pressable>
-          <Text style={[styles.legalDivider, { color: colors.muted }]}>•</Text>
+          <Text style={[styles.footerDivider, { color: colors.muted }]}>•</Text>
           <Pressable onPress={() => navigateTo?.('Terms')} hitSlop={8}>
-            <Text style={[styles.legalLink, { color: colors.muted }]}>Terms & Conditions</Text>
+            <Text style={[styles.footerLink, { color: colors.muted }]}>Terms & Conditions</Text>
           </Pressable>
         </View>
+        <Pressable style={styles.versionButton} onPress={() => setShowAppLoading(true)} hitSlop={10}>
+          <Text style={[styles.versionText, { color: colors.muted }]}>Auto Help GH v{APP_VERSION}</Text>
+        </Pressable>
       </ScrollView>
 
-      {/* Edit profile overlay (a dedicated "edit page") */}
+      {/* ===== Edit profile overlay ===== */}
       {overlay === 'edit' && (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, zIndex: 1000 }]}>
           <View style={[styles.overlayHeader, { borderColor: colors.surface, backgroundColor: colors.background }]}>
@@ -495,52 +412,29 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
             <Text style={[styles.overlayTitle, { color: colors.text }]}>Edit profile</Text>
             <View style={{ width: 24 }} />
           </View>
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 16 }}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <Text style={[styles.fieldLabel, { color: colors.muted }]}>Full name</Text>
-            <TextInput
-              value={profile.fullName}
-              onChangeText={(value) => setProfile((prev) => ({ ...prev, fullName: value }))}
-              placeholder="Full name"
-              placeholderTextColor={colors.muted}
-              style={[styles.input, { borderColor: colors.surface, color: colors.text }]}
-            />
+            <TextInput value={profile.fullName} onChangeText={(value) => setProfile((prev) => ({ ...prev, fullName: value }))} placeholder="Full name" placeholderTextColor={colors.muted} style={[styles.input, { borderColor: colors.surface, color: colors.text }]} />
             <Text style={[styles.fieldLabel, { color: colors.muted }]}>Phone number</Text>
-            <TextInput
-              value={profile.phone}
-              onChangeText={(value) => setProfile((prev) => ({ ...prev, phone: value }))}
-              placeholder="Phone number"
-              placeholderTextColor={colors.muted}
-              keyboardType="phone-pad"
-              style={[styles.input, { borderColor: colors.surface, color: colors.text }]}
-            />
+            <TextInput value={profile.phone} onChangeText={(value) => setProfile((prev) => ({ ...prev, phone: value }))} placeholder="Phone number" placeholderTextColor={colors.muted} keyboardType="phone-pad" style={[styles.input, { borderColor: colors.surface, color: colors.text }]} />
             <View style={[styles.overlayToggleRow, { borderColor: colors.surface }]}>
               <View>
                 <Text style={[styles.overlayToggleTitle, { color: colors.text }]}>Push alerts</Text>
                 <Text style={[styles.overlayToggleSub, { color: colors.muted }]}>Order updates and alerts</Text>
               </View>
-              <Switch
-                value={profile.notifications}
-                onValueChange={(value) => setProfile((prev) => ({ ...prev, notifications: value }))}
-                trackColor={{ false: '#b0b0b0', true: colors.primary }}
-              />
+              <View style={styles.switchContainer}>
+                <Switch value={profile.notifications} onValueChange={(value) => setProfile((prev) => ({ ...prev, notifications: value }))} trackColor={{ false: '#b0b0b0', true: colors.primary }} />
+              </View>
             </View>
-            <TouchableOpacity
-              style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: savingProfile ? 0.7 : 1, marginTop: 16 }]}
-              onPress={() => void saveProfile()}
-              disabled={savingProfile}
-            >
+            <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: savingProfile ? 0.7 : 1, marginTop: 16 }]} onPress={() => void saveProfile()} disabled={savingProfile}>
               {savingProfile ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Save changes</Text>}
             </TouchableOpacity>
+            <Image source={require('../../assets/icon.png')} style={styles.overlayImage} />
           </ScrollView>
         </View>
       )}
 
-      {/* Delete account overlay — requires typing the email to confirm */}
+      {/* ===== Delete account overlay ===== */}
       {overlay === 'delete' && (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, zIndex: 1000 }]}>
           <View style={[styles.overlayHeader, { borderColor: colors.surface, backgroundColor: colors.background }]}>
@@ -550,68 +444,19 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
             <Text style={[styles.overlayTitle, { color: colors.text }]}>Delete account</Text>
             <View style={{ width: 24 }} />
           </View>
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 16 }}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={[styles.deleteWarningBox, { backgroundColor: `${colors.danger || colors.primary}12`, borderColor: `${colors.danger || colors.primary}44` }]}>
-              <Ionicons name="warning-outline" size={28} color={colors.danger || colors.primary} />
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <View style={styles.deleteWarningBox}>
+              <Ionicons name="warning-outline" size={28} color={colors.danger || '#FF3B30'} />
               <Text style={[styles.deleteWarningTitle, { color: colors.text }]}>This action is permanent</Text>
-              <Text style={[styles.deleteWarningBody, { color: colors.muted }]}>
-                Deleting your account removes your profile, orders and sign-in permanently. This cannot be undone.
-              </Text>
+              <Text style={[styles.deleteWarningBody, { color: colors.muted }]}>Deleting your account removes your profile, orders and saved data. This cannot be undone.</Text>
             </View>
-
-            <Text style={[styles.fieldLabel, { color: colors.muted }]}>
-              Type your email to confirm
-            </Text>
-            <Text style={[styles.confirmEmailHint, { color: colors.text }]}>{user.email}</Text>
-            <TextInput
-              value={deleteEmail}
-              onChangeText={setDeleteEmail}
-              placeholder="your@email.com"
-              placeholderTextColor={colors.muted}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              style={[styles.input, { borderColor: colors.surface, color: colors.text }]}
-            />
-
-            <TouchableOpacity
-              style={[
-                styles.deleteConfirmBtn,
-                {
-                  backgroundColor: colors.danger || colors.primary,
-                  opacity:
-                    deleting || deleteEmail.trim().toLowerCase() !== (user.email || '').trim().toLowerCase()
-                      ? 0.4
-                      : 1,
-                },
-              ]}
-              onPress={() => void performDelete()}
-              disabled={deleting || deleteEmail.trim().toLowerCase() !== (user.email || '').trim().toLowerCase()}
-            >
-              {deleting ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.deleteConfirmText}>Permanently delete my account</Text>
-              )}
+            <Text style={[styles.confirmEmailHint, { color: colors.muted }]}>Type your email to confirm:</Text>
+            <TextInput value={deleteEmail} onChangeText={setDeleteEmail} placeholder={user.email || 'your@email.com'} placeholderTextColor={colors.muted} keyboardType="email-address" autoCapitalize="none" style={[styles.input, { borderColor: colors.surface, color: colors.text }]} />
+            <TouchableOpacity style={[styles.deleteConfirmBtn, { backgroundColor: colors.danger || '#FF3B30', opacity: deleting ? 0.6 : 1 }]} onPress={() => void performDelete()} disabled={deleting}>
+              {deleting ? <ActivityIndicator color="#fff" /> : <Text style={styles.deleteConfirmText}>Delete my account</Text>}
             </TouchableOpacity>
+            {showAppLoading && <LoadingScreen message="Deleting your account…" />}
           </ScrollView>
-        </View>
-      )}
-
-      {showAppLoading && (
-        <View style={[StyleSheet.absoluteFill, { zIndex: 1000 }]}>
-          <LoadingScreen />
-          <Pressable
-            style={styles.loadingClose}
-            onPress={() => setShowAppLoading(false)}
-          >
-            <Ionicons name="close-circle" size={36} color={colors.text} />
-          </Pressable>
         </View>
       )}
     </View>
@@ -619,223 +464,121 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: 50,
-    paddingHorizontal: 16,
-  },
-  // Redesigned profile card
-  heroCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  heroBanner: {
+  container: { flex: 1 },
+  title: { fontSize: 17, fontWeight: '800' },
+  primaryBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  primaryBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+
+  // Profile card
+  profileCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 16,
+    padding: 16,
     alignItems: 'center',
-    paddingVertical: 22,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 },
   },
+  profileHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, width: '100%' },
   avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: {
-    fontSize: 26,
-    fontWeight: '900',
+  avatarText: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  profileInfo: { flex: 1 },
+  profileName: { fontSize: 17, fontWeight: '600' },
+  profileEmail: { fontSize: 13, marginTop: 3 },
+  editBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#5856D6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  heroBody: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    position: 'relative',
-  },
-  name: { fontSize: 18, fontWeight: '900', marginBottom: 2, textAlign: 'center' },
-  email: { fontSize: 13, fontWeight: '600', marginBottom: 2, textAlign: 'center' },
-  memberSince: { fontSize: 12, textAlign: 'center' },
-  profileMeta: {
+  profileMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     marginTop: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
     borderWidth: 1,
+    alignSelf: 'flex-start',
   },
-  profileMetaText: { fontSize: 14, fontWeight: '700', flex: 1 },
-  cardEditBtn: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
+  profileMetaText: { fontSize: 13, fontWeight: '500' },
+  memberSince: { fontSize: 12, marginTop: 8, fontWeight: '500' },
+
+  // Section header
+  sectionHeader: {
+    fontSize: 11,
+    fontWeight: '800',
+    marginHorizontal: 22,
+    marginTop: 20,
+    marginBottom: 10,
+    letterSpacing: 1.2,
+  },
+
+  // Setting row
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+  iconCircle: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  guestWrap: {
+  settingLabel: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-    paddingTop: 40,
-  },
-  guestIconWrap: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  guestTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  guestSubtitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: 28,
-    paddingHorizontal: 6,
-  },
-  guestPrimaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    width: '100%',
-    height: 52,
-    borderRadius: 16,
-    marginBottom: 12,
-  },
-  guestPrimaryText: {
+    marginLeft: 12,
     fontSize: 16,
-    fontWeight: '900',
+    fontWeight: '500',
   },
-  guestSecondaryBtn: {
-    width: '100%',
-    height: 52,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  guestSecondaryText: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  sectionCard: {
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 12,
-  },
-  sectionTitle: { fontSize: 16, fontWeight: '900', marginBottom: 10 },
-  input: {
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    height: 48,
-    marginBottom: 14,
-    fontWeight: '600',
-  },
-  fieldLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  primaryBtn: {
-    height: 48,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryBtnText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 15,
-  },
-  settingRow: {
-    minHeight: 56,
+  settingLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  switchContainer: { flexShrink: 0, marginLeft: 8 },
+  contactInfo: { flex: 1, marginLeft: 12 },
+  contactSub: { fontSize: 12, marginTop: 2 },
+  logoutRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-  },
-  settingLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  settingIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  signoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginHorizontal: 16,
     marginTop: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    gap: 10,
-    marginBottom: 12,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginBottom: 24,
   },
-  signoutText: {
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  // Delete button at the bottom
-  deleteBtn: {
+
+  // Footer
+  footerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    marginBottom: 24,
+    marginTop: 32,
   },
-  deleteText: {
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  versionButton: {
-    alignItems: 'center',
-    paddingVertical: 14,
-  },
-  versionText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  legalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingBottom: 28,
-  },
-  legalLink: {
-    fontSize: 12,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
-  },
-  legalDivider: {
-    fontSize: 10,
-  },
-  // Overlay (edit / delete pages)
+  footerLink: { fontSize: 12, fontWeight: '600' },
+  footerDivider: { fontSize: 10 },
+  versionButton: { alignItems: 'center', marginTop: 6, paddingBottom: 24 },
+  versionText: { fontSize: 12, fontWeight: '500', textAlign: 'center' },
+
+  // Overlay
   overlayHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -845,16 +588,8 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: 1,
   },
-  overlayClose: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  overlayTitle: {
-    fontSize: 17,
-    fontWeight: '900',
-  },
+  overlayClose: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  overlayTitle: { fontSize: 17, fontWeight: '900' },
   overlayToggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -867,6 +602,10 @@ const styles = StyleSheet.create({
   },
   overlayToggleTitle: { fontSize: 15, fontWeight: '800' },
   overlayToggleSub: { fontSize: 12, marginTop: 2 },
+  fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 8 },
+  input: { height: 48, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, fontSize: 15 },
+  overlayImage: { width: 90, height: 90, borderRadius: 45, marginTop: 20, alignSelf: 'center' },
+
   // Delete overlay
   deleteWarningBox: {
     borderRadius: 16,
@@ -875,40 +614,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-  deleteWarningTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    marginTop: 8,
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  deleteWarningBody: {
-    fontSize: 13,
-    fontWeight: '500',
-    textAlign: 'center',
-    lineHeight: 19,
-  },
-  confirmEmailHint: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 10,
-  },
-  deleteConfirmBtn: {
-    height: 50,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-  },
-  deleteConfirmText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 15,
-  },
-  loadingClose: {
-    position: 'absolute',
-    bottom: 48,
-    alignSelf: 'center',
-    opacity: 0.85,
-  },
+  deleteWarningTitle: { fontSize: 16, fontWeight: '900', marginTop: 8, marginBottom: 6, textAlign: 'center' },
+  deleteWarningBody: { fontSize: 13, fontWeight: '500', textAlign: 'center', lineHeight: 19 },
+  confirmEmailHint: { fontSize: 13, fontWeight: '700', marginBottom: 10 },
+  deleteConfirmBtn: { height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  deleteConfirmText: { color: '#fff', fontWeight: '800', fontSize: 15 },
 });
