@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TextInput, Image, TouchableOpacity, Dimensions, ScrollView, Animated, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Image, TouchableOpacity, Dimensions, ScrollView, Animated, StatusBar, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import {Ionicons, MaterialCommunityIcons} from '@expo/vector-icons';
@@ -12,9 +12,61 @@ import { AppUpdateBanner, MarketingBanner, CallToOrderBanner, AdCarousel, useFee
 import { APP_VERSION } from '../utils/appVersion';
 import { DEVICE_CORNER_RADIUS } from '../utils/device';
 import { cacheReadThrough } from '../utils/cache';
+import MasonryGrid, { MasonryItem } from '../components/MasonryGrid';
+import { loadImageSize, peekImageSize, hasMeasuredImage } from '../utils/imageSize';
+import { useCart } from '../context/Cart';
+import { useAppAlert } from '../components/AppAlert';
 
 const { width } = Dimensions.get('window');
 const isMobile = width < 768;
+
+// Feed layout metrics. `FEED_H_PADDING` matches the horizontal padding on the
+// feed section, and the gap sits between masonry columns.
+const FEED_H_PADDING = 32;
+const FEED_GAP = 12;
+const FEED_COLUMNS = 2;
+const FEED_COLUMN_WIDTH = (width - FEED_H_PADDING - FEED_GAP * (FEED_COLUMNS - 1)) / FEED_COLUMNS;
+
+// Height used before a card's image has been measured. Matches the old fixed
+// image box plus its text block so the first paint does not jump noticeably.
+const ESTIMATED_CARD_HEIGHT = 232;
+
+// Height of the text block beneath the image, which varies with the name's
+// line count. Used only as a masonry estimate before the image is measured.
+const CARD_TEXT_BASE = 96;
+const NAME_LINE_HEIGHT = 18;
+
+// Hairline that separates a card from the page. Dark mode sets `surface`
+// equal to `background`, so a plain surface fill gives cards no edge at all;
+// this border supplies the separation instead of a drop shadow.
+const CARD_BORDER = 'rgba(0, 0, 0, 0.10)';
+const CARD_BORDER_DARK = 'rgba(255, 255, 255, 0.14)';
+
+// Product names in the feed are short and mostly fit on one or two lines.
+// Rather than clamping every card to a fixed height, the number of lines
+// tracks the name's length so short names do not leave empty space and long
+// names still get enough room to stay readable.
+//
+// Thresholds assume roughly 25 characters fit on one line at 13px in the
+// ~173px card (13px * 0.53 average glyph width). Wide-word safety margins are
+// built in, since the exact wrap point depends on the characters used.
+function nameLineCount(name: string): number {
+  const len = name.trim().length;
+  if (len <= 18) return 1;
+  if (len <= 42) return 2;
+  if (len <= 68) return 3;
+  return 4;
+}
+
+/**
+ * Height the image box occupies at full intrinsic aspect ratio. Falls back to
+ * the estimate until the image has been measured.
+ */
+function imageHeightFor(product: Product, columnWidth: number): number {
+  return product.imageSize && product.imageSize.width > 0
+    ? (columnWidth * product.imageSize.height) / product.imageSize.width
+    : ESTIMATED_CARD_HEIGHT;
+}
 
 interface Product {
   id: string;
@@ -23,11 +75,55 @@ interface Product {
   price: number | null;
   image: any;
   brand?: string;
+  imageSize?: { width: number; height: number } | null;
+  weight_kg?: number | null;
+  pay_on_delivery?: boolean | null;
 }
 
+type FeedEntry = ({ type: 'product'; item: Product } | { type: 'ad'; ad: any }) & MasonryItem;
+
 export default function Home({ navigateTo }: { navigateTo?: (name: string, params?: any) => void }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const { user } = useAuth();
+  const { addItem } = useCart();
+  const { show: showAlert } = useAppAlert();
+  // Tracks which product is mid-request so its button can show a spinner and
+  // reject repeat taps.
+  const [addingId, setAddingId] = React.useState<string | null>(null);
+
+  const handleAddToCart = React.useCallback(
+    async (product: Product) => {
+      if (addingId) return;
+      if (!user?.id) {
+        showAlert({ title: 'Please log in', message: 'You need to be logged in to add items to cart.' });
+        return;
+      }
+      setAddingId(product.id);
+      try {
+        await addItem(
+          {
+            product_id: product.id,
+            sku: product.sku || '',
+            title: product.name,
+            price: Number(product.price || 0),
+            weight_kg: Number(product.weight_kg || 0),
+            pay_on_delivery: Boolean(product.pay_on_delivery),
+            image_url: product.image?.uri,
+          },
+          1,
+        );
+        showAlert({ title: 'Added', message: `${product.name} was added to your cart.` });
+      } catch (error) {
+        showAlert({
+          title: 'Cart error',
+          message: error instanceof Error ? error.message : 'Could not add to cart.',
+        });
+      } finally {
+        setAddingId(null);
+      }
+    },
+    [addingId, user?.id, addItem, showAlert],
+  );
   const { categories: contextCategories, loading: categoriesLoading } = useCategories();
   const [searchTerm, setSearchTerm] = React.useState('');
   const [latest, setLatest] = React.useState<Product[]>([]);
@@ -40,22 +136,60 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
   const feedAds = useFeedAds(colors);
   const [dismissedFeedAds, setDismissedFeedAds] = React.useState<string[]>([]);
   const interleaved = React.useMemo(() => {
-    const result: Array<{ type: 'product'; item: Product } | { type: 'ad'; ad: any }> = [];
+    const result: FeedEntry[] = [];
     if (!latest.length) return result;
     let adIdx = 0;
     latest.forEach((item, i) => {
-      result.push({ type: 'product', item });
+      // Estimate the card's text block from the name's line count so the
+      // masonry columns stay balanced while images are still unmeasured.
+      const textHeight = CARD_TEXT_BASE + NAME_LINE_HEIGHT * nameLineCount(item.name);
+      result.push({
+        type: 'product',
+        item,
+        imageSize: item.imageSize,
+        height: imageHeightFor(item, FEED_COLUMN_WIDTH) + textHeight,
+      });
       // Insert an ad after every 4th product.
       if ((i + 1) % 4 === 0 && adIdx < feedAds.length) {
         const ad = feedAds[adIdx];
         adIdx += 1;
         if (!dismissedFeedAds.includes(ad.id)) {
-          result.push({ type: 'ad', ad });
+          // Ads are self-sizing; the estimate keeps the columns balanced
+          // until the card reports its real height.
+          result.push({ type: 'ad', ad, height: ESTIMATED_CARD_HEIGHT });
         }
       }
     });
     return result;
   }, [latest, feedAds, dismissedFeedAds]);
+
+  // Products persist only an image path, so the masonry layout has to learn
+  // each image's intrinsic size at runtime to size the card without cropping.
+  // `hasMeasuredImage` also covers failed measurements, so a broken url does
+  // not re-trigger this effect forever.
+  React.useEffect(() => {
+    let cancelled = false;
+    const pending = latest.filter((p) => p.image?.uri && !p.imageSize && !hasMeasuredImage(p.image.uri));
+    if (!pending.length) return;
+
+    Promise.all(
+      pending.map((p) => loadImageSize(p.image.uri).then((size) => ({ id: p.id, size }))),
+    ).then((results) => {
+      if (cancelled) return;
+      const resolved = results.filter((r) => r.size).length;
+      if (!resolved) return;
+      setLatest((prev) =>
+        prev.map((p) => {
+          const match = results.find((r) => r.id === p.id);
+          return match?.size ? { ...p, imageSize: match.size } : p;
+        }),
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [latest]);
 
   // Keep the notification bell badge in sync with unread inbox entries.
   React.useEffect(() => {
@@ -116,7 +250,7 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
           async () => {
             const { data, error } = await supabase
               .from('products')
-              .select('id, title, sku, images, price, brand, created_at')
+              .select('id, title, sku, images, price, brand, weight_kg, pay_on_delivery, created_at')
               .order('created_at', { ascending: false })
               .limit(50);
             if (error) throw error;
@@ -131,14 +265,21 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
 
       if (mounted) {
         setLatest(
-          rows.map((p: any) => ({
-            id: p.id,
-            name: p.title,
-            sku: p.sku,
-            price: p.price === null || p.price === undefined ? null : Number(p.price),
-            image: getProductImageUri(p.images) ? { uri: getProductImageUri(p.images)! } : null,
-            brand: p.brand,
-          }))
+          rows.map((p: any) => {
+            const uri = getProductImageUri(p.images);
+            return {
+              id: p.id,
+              name: p.title,
+              sku: p.sku,
+              price: p.price === null || p.price === undefined ? null : Number(p.price),
+              image: uri ? { uri } : null,
+              brand: p.brand,
+              weight_kg: p.weight_kg === null || p.weight_kg === undefined ? null : Number(p.weight_kg),
+              pay_on_delivery: Boolean(p.pay_on_delivery),
+              // Sizes measured in an earlier mount are reused immediately.
+              imageSize: uri ? peekImageSize(uri) ?? null : null,
+            };
+          })
         );
       }
 
@@ -282,69 +423,141 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
               {Array.from({ length: 6 }).map((_, idx) => (
                 <Animated.View
                   key={idx}
-                  style={[styles.productCard, { opacity: shimmer }]}
+                  style={[
+                    styles.skeletonCard,
+                    { opacity: shimmer, borderColor: scheme === 'dark' ? CARD_BORDER_DARK : CARD_BORDER },
+                  ]}
                 >
-                  <View style={styles.skeletonImage} />
-                  <View style={styles.skeletonLine} />
+                  <View style={[styles.skeletonImage, { backgroundColor: colors.surface }]} />
+                  <View style={[styles.skeletonLine, { backgroundColor: colors.surface }]} />
+                  <View style={[styles.skeletonRule, { backgroundColor: colors.surface }]} />
+                  <View style={[styles.skeletonPrice, { backgroundColor: colors.surface }]} />
                 </Animated.View>
               ))}
             </View>
           ) : (
-            <View style={styles.grid}>
-              {interleaved.map((entry, idx) =>
-                entry.type === 'ad' ? (
-                  <View key={`ad-${entry.ad.id}-${idx}`} style={[styles.productCard, { backgroundColor: colors.surface }]}>
-                    <AdCardInline ad={entry.ad} colors={colors} onClose={() => setDismissedFeedAds((prev) => [...prev, entry.ad.id])} />
-                  </View>
-                ) : (
-                  <TouchableOpacity 
-                    key={entry.item.id} 
-                    style={[styles.productCard, { backgroundColor: colors.surface }]} 
-                    activeOpacity={0.85} 
-                    onPress={() => navigateTo?.('ProductDetails', { productId: entry.item.id })}
+            <MasonryGrid
+              style={styles.masonry}
+              data={interleaved}
+              columns={FEED_COLUMNS}
+              gap={FEED_GAP}
+              columnWidth={FEED_COLUMN_WIDTH}
+              estimatedHeight={ESTIMATED_CARD_HEIGHT}
+              renderItem={(entry) => {
+                const isDark = scheme === 'dark';
+                const cardBorder = isDark ? CARD_BORDER_DARK : CARD_BORDER;
+
+                if (entry.type === 'ad') {
+                  return (
+                    <View
+                      style={[
+                        styles.cardShell,
+                        { backgroundColor: colors.background, borderColor: cardBorder },
+                      ]}
+                    >
+                      <AdCardInline
+                        ad={entry.ad}
+                        colors={colors}
+                        onClose={() => setDismissedFeedAds((prev) => [...prev, entry.ad.id])}
+                      />
+                    </View>
+                  );
+                }
+
+                const { item } = entry;
+                // Full image height: size the box from the measured aspect
+                // ratio instead of cropping the image to a fixed height.
+                const imageHeight = imageHeightFor(item, FEED_COLUMN_WIDTH);
+
+                return (
+                  <TouchableOpacity
+                    style={[
+                      styles.cardShell,
+                      { backgroundColor: colors.background, borderColor: cardBorder },
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => navigateTo?.('ProductDetails', { productId: item.id })}
                   >
-                    <View style={styles.imageContainer}>
-                      {entry.item.image ? (
-                        <Image source={entry.item.image} style={styles.productImage} />
+                    <View style={[styles.imageContainer, { height: imageHeight }]}>
+                      {item.image ? (
+                        <Image source={item.image} style={styles.productImage} resizeMode="contain" />
                       ) : (
-                        <View style={[styles.productImage, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
-                          <Ionicons name="cube-outline" size={32} color={colors.muted} />
+                        <View style={[styles.imageFallback, { borderColor: cardBorder }]}>
+                          <Ionicons name="cube-outline" size={30} color={colors.muted} />
+                          <Text style={[styles.imageFallbackText, { color: colors.muted }]}>
+                            No image
+                          </Text>
                         </View>
                       )}
+                      {item.brand ? (
+                        <View
+                          style={[
+                            styles.brandChip,
+                            { backgroundColor: colors.background, borderColor: cardBorder },
+                          ]}
+                        >
+                          <Text style={[styles.brandChipText, { color: colors.primary }]} numberOfLines={1}>
+                            {item.brand}
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
 
                     <View style={styles.productInfo}>
-                      <View style={styles.productMetaRow}>
-                        {entry.item.brand ? (
-                          <Text style={[styles.productBrand, { color: colors.primary }]} numberOfLines={1}>
-                            {entry.item.brand}
-                          </Text>
-                        ) : (
-                          <View />
-                        )}
-                        {entry.item.sku ? (
-                          <Text style={[styles.productSku, { color: colors.muted }]} numberOfLines={1}>
-                            {entry.item.sku}
-                          </Text>
-                        ) : null}
-                      </View>
                       <Text
                         style={[styles.productName, { color: colors.text }]}
-                        numberOfLines={2}
+                        numberOfLines={nameLineCount(item.name)}
                       >
-                        {entry.item.name}
+                        {item.name}
                       </Text>
+
+                      <View style={[styles.infoRule, { backgroundColor: cardBorder }]} />
+
                       <View style={styles.productFooter}>
-                        <Text style={[styles.productPrice, { color: colors.primary }]}>{formatCedis(entry.item.price)}</Text>
-                        <View style={[styles.addBtn, { backgroundColor: colors.primary }]}>
-                          <Ionicons name="chevron-forward" size={14} color="#fff" />
+                        <View style={styles.priceBlock}>
+                          <Text style={[styles.productPrice, { color: colors.text }]}>
+                            {formatCedis(item.price)}
+                          </Text>
+                          {item.sku ? (
+                            <Text style={[styles.productSku, { color: colors.muted }]} numberOfLines={1}>
+                              {item.sku}
+                            </Text>
+                          ) : null}
                         </View>
+                        <TouchableOpacity
+                          style={[
+                            styles.addBtn,
+                            {
+                              backgroundColor: colors.primary,
+                              opacity: addingId === item.id ? 0.7 : 1,
+                            },
+                          ]}
+                          activeOpacity={0.8}
+                          disabled={addingId !== null}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Add ${item.name} to cart`}
+                          onPress={(event) => {
+                            // Keep the tap here: the surrounding card opens the
+                            // product, which should not happen on "Add".
+                            event.stopPropagation();
+                            handleAddToCart(item);
+                          }}
+                        >
+                          {addingId === item.id ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <>
+                              <Ionicons name="cart-outline" size={13} color="#fff" />
+                              <Text style={styles.addBtnText}>Add</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
                       </View>
                     </View>
                   </TouchableOpacity>
-                ),
-              )}
-            </View>
+                );
+              }}
+            />
           )}
         </View>
       </SafeAreaView>
@@ -450,93 +663,141 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     justifyContent: "space-between",
   },
-  productCard: {
-    width: (width - 48) / 2,
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    marginBottom: 14,
+  masonry: { marginTop: 14 },
+  // Cards sit flush with the page and carry no elevation. A hairline border
+  // (supplied by the theme) is what separates them, since dark mode makes
+  // `surface` and `background` the same colour.
+  cardShell: {
+    width: "100%",
+    borderRadius: 16,
+    borderWidth: 1,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  skeletonImage: {
-    width: "100%",
-    height: 116,
-    backgroundColor: "#eee",
-    borderRadius: 18,
-    marginBottom: 10,
-  },
-  skeletonLine: {
-    width: "70%",
-    height: 12,
-    backgroundColor: "#eee",
-    borderRadius: 6,
-  },
-  productThumb: {
-    width: "100%",
-    height: 120,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    marginBottom: 10,
-    backgroundColor: "#f6f6f6",
-  },
-  productName: {
-    fontSize: 13,
-    fontWeight: "700",
-    marginBottom: 6,
-    minHeight: 34,
   },
   imageContainer: {
     width: "100%",
-    height: 116,
-    backgroundColor: "#f6f6f6",
+    overflow: "hidden",
+    justifyContent: "center",
   },
   productImage: {
     width: "100%",
     height: "100%",
   },
-  productInfo: {
-    paddingHorizontal: 10,
-    paddingTop: 10,
-    paddingBottom: 10,
+  imageFallback: {
     width: "100%",
-  },
-  productMetaRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    height: "100%",
     alignItems: "center",
-    marginBottom: 6,
+    justifyContent: "center",
     gap: 6,
+    borderWidth: 1,
+    borderStyle: "dashed",
   },
-  productBrand: {
-    fontSize: 11,
+  imageFallbackText: {
+    fontSize: 10,
     fontWeight: "700",
-    maxWidth: "48%",
+    letterSpacing: 0.6,
     textTransform: "uppercase",
   },
-  productSku: {
-    fontSize: 10,
-    fontWeight: "600",
-    maxWidth: "48%",
+  // Brand sits on the image as a small chip so the product photo keeps the
+  // full width of the card. The chip fill is supplied at render time from the
+  // theme so it stays legible over any photo.
+  brandChip: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    maxWidth: "72%",
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  brandChipText: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+    textTransform: "uppercase",
+  },
+  productInfo: {
+    paddingHorizontal: 12,
+    paddingTop: 11,
+    paddingBottom: 12,
+    width: "100%",
+  },
+  productName: {
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+  infoRule: {
+    height: 1,
+    marginTop: 10,
+    marginBottom: 9,
   },
   productFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 4,
+    gap: 8,
+  },
+  priceBlock: {
+    flex: 1,
   },
   productPrice: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "900",
+    letterSpacing: -0.2,
+  },
+  productSku: {
+    fontSize: 10,
+    fontWeight: "600",
+    marginTop: 2,
   },
   addBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 5,
+    minWidth: 62,
+    height: 28,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+  },
+  addBtnText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.2,
+  },
+  skeletonCard: {
+    width: FEED_COLUMN_WIDTH,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: FEED_GAP,
+    overflow: "hidden",
+    paddingBottom: 14,
+  },
+  skeletonImage: {
+    width: "100%",
+    height: 116,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.05)",
+    marginBottom: 12,
+  },
+  skeletonLine: {
+    width: "86%",
+    height: 11,
+    borderRadius: 6,
+    marginHorizontal: 12,
+  },
+  skeletonRule: {
+    width: "86%",
+    height: 1,
+    marginTop: 10,
+    marginBottom: 10,
+    marginHorizontal: 12,
+  },
+  skeletonPrice: {
+    width: "46%",
+    height: 13,
+    borderRadius: 6,
+    marginHorizontal: 12,
   },
 });
