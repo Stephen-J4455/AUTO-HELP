@@ -1,14 +1,18 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable, Image, TextInput, ImageBackground, ActivityIndicator } from "react-native";
-import { useTheme } from "../theme";
+import { Text, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "../theme";
 import { useAuth } from "../context/Auth";
 import { useNavigation } from "@react-navigation/native";
 import { useAppAlert } from "../components/AppAlert";
+import { AuthShell, AuthField, AuthSubmit, AuthSwitch, useAuthPalette } from "../components/AuthShell";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ForgotPassword() {
   const { colors } = useTheme();
-  const { resetPassword, loading } = useAuth();
+  const { borderColor } = useAuthPalette();
+  const { resetPassword } = useAuth();
   const navigation = useNavigation<any>();
   const { show: showAlert } = useAppAlert();
 
@@ -17,11 +21,11 @@ export default function ForgotPassword() {
   const [sent, setSent] = React.useState(false);
 
   const handleReset = async () => {
-    if (!email) {
+    if (!email.trim()) {
       showAlert({ title: "Error", message: "Please enter your email address" });
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!EMAIL_RE.test(email.trim())) {
       showAlert({ title: "Error", message: "Please enter a valid email address" });
       return;
     }
@@ -36,137 +40,68 @@ export default function ForgotPassword() {
   };
 
   return (
-    <View style={styles.container}>
-      <ImageBackground
-        source={require("../../assets/onboarding/bmw1.jpg")}
-        style={styles.imageBackground}
-      >
-        <View style={styles.blendBackground}>
-          <View style={styles.card}>
-            <Pressable
-              onPress={() => navigation.goBack()}
-              style={{ alignSelf: "flex-start", marginBottom: 8 }}
-              accessibilityRole="button"
-            >
-              <Ionicons name="arrow-back" size={26} color={colors.surface} />
-            </Pressable>
-            <Text style={[styles.text, { color: colors.surface }]}>
-              Reset Password
-            </Text>
-            <Image
-              source={require("../../assets/icon.png")}
-              style={styles.logo}
-            />
-
-            {sent ? (
-              <View style={{ alignItems: "center", marginTop: 10 }}>
-                <Ionicons name="checkmark-circle" size={56} color={colors.primary} />
-                <Text style={[styles.info, { color: colors.surface, textAlign: "center", marginTop: 12 }]}>
-                  If an account exists for {email}, we've sent a password reset link to your email.
-                </Text>
-                <Text style={[styles.info, { color: colors.surface, textAlign: "center", marginTop: 8, opacity: 0.8 }]}>
-                  Tap the link in the email to choose a new password.
-                </Text>
-                <Pressable
-                  style={[styles.button, { backgroundColor: colors.background, marginTop: 24 }]}
-                  onPress={() => navigation.goBack()}
-                >
-                  <Text style={{ color: colors.text, fontWeight: "bold" }}>Back to Login</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <>
-                <Text style={[styles.info, { color: colors.surface, textAlign: "center", marginTop: 8 }]}>
-                  Enter your account email and we'll send you a link to reset your password.
-                </Text>
-                <View style={styles.inputContainer}>
-                  <Ionicons name="mail" size={24} color={colors.muted} />
-                  <TextInput
-                    style={[styles.input, { color: colors.surface }]}
-                    placeholder="Email"
-                    placeholderTextColor={colors.surface}
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    editable={!sending}
-                  />
-                </View>
-                <Pressable
-                  style={[styles.button, { backgroundColor: colors.background, opacity: sending ? 0.5 : 1 }]}
-                  onPress={handleReset}
-                  disabled={sending}
-                >
-                  {sending ? (
-                    <ActivityIndicator color={colors.text} />
-                  ) : (
-                    <Text style={{ color: colors.text, fontWeight: "bold" }}>
-                      Send Reset Link
-                    </Text>
-                  )}
-                </Pressable>
-                <Pressable style={{ marginTop: 20 }} onPress={() => navigation.goBack()}>
-                  <Text style={{ color: colors.surface }}>
-                    Remembered your password? Login
-                  </Text>
-                </Pressable>
-              </>
-            )}
+    <AuthShell kicker="PASSWORD RESET" onBack={() => navigation.goBack()} footer="We never share your email.">
+      {sent ? (
+        <View style={styles.successWrap}>
+          <View style={[styles.successIcon, { borderColor, backgroundColor: colors.surface }]}>
+            <Ionicons name="checkmark" size={30} color={colors.primary} />
+          </View>
+          <Text style={[styles.title, { color: colors.text }]}>Check your inbox</Text>
+          <Text style={[styles.successBody, { color: colors.muted }]}>
+            If an account exists for {email.trim().toLowerCase()}, we&apos;ve sent a password reset link to
+            your email. Tap the link to choose a new password.
+          </Text>
+          <View style={styles.successCta}>
+            <AuthSubmit label="Back to sign in" onPress={() => navigation.goBack()} />
           </View>
         </View>
-      </ImageBackground>
-    </View>
+      ) : (
+        <>
+          <Text style={[styles.title, { color: colors.text }]}>Reset password</Text>
+          <Text style={[styles.subtitle, { color: colors.muted }]}>
+            Enter your account email and we&apos;ll send you a link to set a new password.
+          </Text>
+
+          <View style={styles.form}>
+            <AuthField
+              label="Email"
+              icon="mail-outline"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="you@autohelp.gh"
+              editable={!sending}
+              autoComplete="email"
+              keyboardType="email-address"
+              returnKeyType="go"
+              onSubmitEditing={handleReset}
+            />
+            <AuthSubmit label="Send reset link" onPress={handleReset} loading={sending} />
+          </View>
+
+          <AuthSwitch
+            question="Remembered your password?"
+            action="Sign in"
+            onPress={() => navigation.goBack()}
+          />
+        </>
+      )}
+    </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: "center", justifyContent: "center" },
-  blendBackground: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.7)",
-    width: "100%",
-  },
-  text: { fontSize: 30, fontWeight: "bold", textAlign: "center" },
-  info: { fontSize: 14, fontWeight: "600" },
-  card: {
-    width: "90%",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.1)",
-    padding: 20,
-    borderRadius: 30,
-  },
-  button: {
-    marginTop: 20,
-    paddingHorizontal: 40,
-    paddingVertical: 15,
-    borderRadius: 30,
-  },
-  logo: { width: 90, height: 90, marginTop: 16, borderRadius: 30 },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 20,
-    justifyContent: "center",
+  title: { fontSize: 28, fontWeight: "900", letterSpacing: -0.4 },
+  subtitle: { fontSize: 13, fontWeight: "600", marginTop: 6, lineHeight: 19 },
+  form: { marginTop: 26, gap: 16 },
+  successWrap: { alignItems: "center", gap: 12 },
+  successCta: { alignSelf: "stretch", marginTop: 10 },
+  successIcon: {
+    width: 66,
+    height: 66,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 30,
-    paddingHorizontal: 20,
-    width: "100%",
-  },
-  input: {
-    flex: 1,
-    padding: 12,
-    paddingVertical: 15,
-    borderColor: "#ccc",
-    borderRadius: 30,
-  },
-  imageBackground: {
-    flex: 1,
-    width: "100%",
     alignItems: "center",
     justifyContent: "center",
   },
+  successBody: { fontSize: 13, fontWeight: "600", textAlign: "center", lineHeight: 20 },
 });

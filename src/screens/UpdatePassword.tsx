@@ -1,9 +1,9 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable, Image, TextInput, ImageBackground, ActivityIndicator } from "react-native";
+import { Text, StyleSheet, View } from "react-native";
 import { useTheme } from "../theme";
-import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/Auth";
 import { useAppAlert } from "../components/AppAlert";
+import { AuthShell, AuthField, AuthSubmit } from "../components/AuthShell";
 
 export default function UpdatePassword() {
   const { colors } = useTheme();
@@ -14,6 +14,7 @@ export default function UpdatePassword() {
   const [confirm, setConfirm] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const confirmRef = React.useRef<any>(null);
 
   const handleUpdate = async () => {
     if (!password || !confirm) {
@@ -34,128 +35,59 @@ export default function UpdatePassword() {
     if (error) {
       showAlert({ title: "Update Failed", message: error });
     } else {
-      showAlert({ title: "Success", message: "Your password has been updated. You can now sign in." });
+      showAlert({
+        title: "Success",
+        message: "Your password has been updated. You can now sign in.",
+      });
     }
   };
 
   return (
-    <View style={styles.container}>
-      <ImageBackground
-        source={require("../../assets/onboarding/bmw1.jpg")}
-        style={styles.imageBackground}
-      >
-        <View style={styles.blendBackground}>
-          <View style={styles.card}>
-            <Text style={[styles.text, { color: colors.surface }]}>
-              Set New Password
-            </Text>
-            <Image
-              source={require("../../assets/icon.png")}
-              style={styles.logo}
-            />
-            <Text style={[styles.info, { color: colors.surface, textAlign: "center", marginTop: 8 }]}>
-              Choose a new password for your account.
-            </Text>
+    <AuthShell kicker="ACCOUNT RECOVERY" footer="Choose a password you don't use anywhere else.">
+      <Text style={[styles.title, { color: colors.text }]}>Set new password</Text>
+      <Text style={[styles.subtitle, { color: colors.muted }]}>
+        Choose a new password for your AUTO-HELP account.
+      </Text>
 
-            <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed" size={24} color={colors.muted} />
-              <TextInput
-                style={[styles.input, { color: colors.surface }]}
-                placeholder="New password (min 6 chars)"
-                placeholderTextColor={colors.surface}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                editable={!saving}
-              />
-              <Pressable onPress={() => setShowPassword((v) => !v)} accessibilityRole="button">
-                <Ionicons name={showPassword ? "eye-off" : "eye"} size={24} color={colors.muted} />
-              </Pressable>
-            </View>
+      <View style={styles.form}>
+        <AuthField
+          label="New password"
+          icon="lock-closed-outline"
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Minimum 6 characters"
+          editable={!saving}
+          secureTextEntry={!showPassword}
+          autoComplete="new-password"
+          returnKeyType="next"
+          onSubmitEditing={() => confirmRef.current?.focus()}
+          inputRef={undefined}
+          showPassword={showPassword}
+          onTogglePassword={() => setShowPassword((v) => !v)}
+        />
 
-            <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed" size={24} color={colors.muted} />
-              <TextInput
-                style={[styles.input, { color: colors.surface }]}
-                placeholder="Confirm new password"
-                placeholderTextColor={colors.surface}
-                value={confirm}
-                onChangeText={setConfirm}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                editable={!saving}
-              />
-            </View>
+        <AuthField
+          label="Confirm new password"
+          icon="shield-checkmark-outline"
+          value={confirm}
+          onChangeText={setConfirm}
+          placeholder="Re-enter your new password"
+          editable={!saving}
+          secureTextEntry={!showPassword}
+          autoComplete="new-password"
+          returnKeyType="go"
+          onSubmitEditing={handleUpdate}
+          inputRef={confirmRef}
+        />
 
-            <Pressable
-              style={[styles.button, { backgroundColor: colors.background, opacity: saving ? 0.5 : 1 }]}
-              onPress={handleUpdate}
-              disabled={saving}
-            >
-              {saving ? (
-                <ActivityIndicator color={colors.text} />
-              ) : (
-                <Text style={{ color: colors.text, fontWeight: "bold" }}>
-                  Update Password
-                </Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </ImageBackground>
-    </View>
+        <AuthSubmit label="Update password" onPress={handleUpdate} loading={saving} />
+      </View>
+    </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: "center", justifyContent: "center" },
-  blendBackground: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.7)",
-    width: "100%",
-  },
-  text: { fontSize: 28, fontWeight: "bold", textAlign: "center" },
-  info: { fontSize: 14, fontWeight: "600" },
-  card: {
-    width: "90%",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.1)",
-    padding: 20,
-    borderRadius: 30,
-  },
-  button: {
-    marginTop: 20,
-    paddingHorizontal: 40,
-    paddingVertical: 15,
-    borderRadius: 30,
-  },
-  logo: { width: 90, height: 90, marginTop: 16, borderRadius: 30 },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 20,
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 30,
-    paddingHorizontal: 20,
-    width: "100%",
-  },
-  input: {
-    flex: 1,
-    padding: 12,
-    paddingVertical: 15,
-    borderColor: "#ccc",
-    borderRadius: 30,
-  },
-  imageBackground: {
-    flex: 1,
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  title: { fontSize: 28, fontWeight: "900", letterSpacing: -0.4 },
+  subtitle: { fontSize: 13, fontWeight: "600", marginTop: 6, lineHeight: 19 },
+  form: { marginTop: 26, gap: 16 },
 });

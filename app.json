@@ -2,7 +2,7 @@
   "expo": {
     "name": "AutoHelp",
     "slug": "AUTO-HELP-GH",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -29,10 +29,7 @@
               "scheme": "autohelpgh"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
     },
