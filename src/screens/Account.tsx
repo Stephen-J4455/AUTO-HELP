@@ -1,3 +1,5 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ChallengeLink from '../components/ChallengeLink';
 import React from 'react';
 import {
   View,
@@ -12,7 +14,6 @@ import {
   Linking,
   Alert,
   Image,
-  StatusBar,
 } from 'react-native';
 import { useTheme } from '../theme';
 import { useAuth } from '../context/Auth';
@@ -41,6 +42,7 @@ const ICON_COLORS = {
 
 export default function Account({ navigateTo }: { navigateTo?: (name: string, params?: any) => void }) {
   const { colors } = useTheme();
+  const { top } = useSafeAreaInsets();
   const { user, signOut, deleteAccount, loading } = useAuth();
   const { show: showAlert } = useAppAlert();
   const { settings } = useStoreSettings();
@@ -172,7 +174,7 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
     return (
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
-        contentContainerStyle={styles.signedOutContent}
+        contentContainerStyle={[styles.signedOutContent, { paddingTop: top + 8 }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.signedOutHero, { backgroundColor: colors.surface }]}>
@@ -190,6 +192,8 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
             <Text style={[styles.secondaryBtnText, { color: colors.primary }]}>Create an account</Text>
           </Pressable>
         </View>
+
+        <ChallengeLink onPress={() => navigateTo?.('Challenge')} />
 
         <Text style={[styles.sectionHeader, { color: colors.muted }]}>ACCOUNT BENEFITS</Text>
         <View style={[styles.benefitList, { backgroundColor: colors.surface }]}>
@@ -231,7 +235,7 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
     <View style={{ flex: 1 }}>
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
-        contentContainerStyle={{ paddingTop: StatusBar.currentHeight || 0, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingTop: top + 8, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
       >
         {/* ===== Profile card ===== */}
@@ -262,6 +266,8 @@ export default function Account({ navigateTo }: { navigateTo?: (name: string, pa
             Member since {new Date(user.created_at || Date.now()).toLocaleDateString()}
           </Text>
         </View>
+
+        <ChallengeLink onPress={() => navigateTo?.('Challenge')} />
 
         {/* ===== Quick Actions ===== */}
         <Text style={[styles.sectionHeader, { color: colors.muted }]}>QUICK ACTIONS</Text>
@@ -522,7 +528,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 17, fontWeight: '800' },
   primaryBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
   primaryBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
-  signedOutContent: { paddingTop: StatusBar.currentHeight || 0, paddingBottom: 28 },
+  signedOutContent: { paddingBottom: 28 },
   signedOutHero: { marginHorizontal: 16, marginTop: 16, borderRadius: 20, padding: 22, alignItems: 'center' },
   signedOutIcon: { width: 78, height: 78, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 18 },
   signedOutLogo: { width: 62, height: 62, borderRadius: 18 },

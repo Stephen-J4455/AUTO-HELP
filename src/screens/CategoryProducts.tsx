@@ -1,5 +1,7 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
+import PageHeader from '../components/PageHeader';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View, StatusBar } from 'react-native';
+import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTheme } from '../theme';
 import { supabase } from '../supabase/supabase';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,7 +11,6 @@ import { ScreenAds } from '../utils/remoteContent';
 import { Dimensions } from 'react-native';
 
 const { width: cpWidth } = Dimensions.get('window');
-const isMobile = cpWidth < 768;
 
 type Product = {
   id: string;
@@ -74,21 +75,8 @@ export default function CategoryProducts({ route, navigation }: { route: any; na
   }, [categoryId]);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={[styles.iconBtn, { backgroundColor: colors.surface }]}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="chevron-back" size={20} color={colors.text} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-            {categoryName}
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.muted }]}>{products.length} products</Text>
-        </View>
-      </View>
+    <SafeAreaView edges={['top', 'bottom']} style={[styles.container, { backgroundColor: colors.background }]}>
+      <PageHeader title={categoryName} subtitle={loading ? undefined : `${products.length} products`} onBack={() => navigation.goBack()} />
 
       <ScreenAds screen="category" />
 
@@ -144,22 +132,12 @@ export default function CategoryProducts({ route, navigation }: { route: any; na
           }
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: isMobile ? (StatusBar.currentHeight || 0) : 40 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, marginBottom: 12 },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: { fontSize: 24, fontWeight: '900' },
-  subtitle: { fontSize: 12, marginTop: 2 },
+  container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { paddingHorizontal: 12, paddingBottom: 120 },
   column: { gap: 10, marginBottom: 10 },

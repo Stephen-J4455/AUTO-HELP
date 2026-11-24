@@ -2,7 +2,7 @@
   "expo": {
     "name": "AutoHelp",
     "slug": "AUTO-HELP-GH",
-    "version": "1.0.2",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -11,12 +11,6 @@
       "bundleIdentifier": "com.stephenj.autohelp"
     },
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#ffffff",
-        "foregroundImage": "./assets/icon.png",
-        "backgroundImage": "./assets/icon.png",
-        "monochromeImage": "./assets/icon.png"
-      },
       "predictiveBackGestureEnabled": false,
       "package": "com.stephenj.autohelp",
       "versionCode": 1,
@@ -42,18 +36,14 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/icon.png",
+          "image": "./assets/splash_icon.png",
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
           "android": {
-            "image": "./assets/icon.png",
-            "resizeMode": "contain",
-            "backgroundColor": "#ffffff"
+            "imageWidth": 288
           },
           "ios": {
-            "image": "./assets/icon.png",
-            "resizeMode": "contain",
-            "backgroundColor": "#ffffff"
+            "imageWidth": 440
           }
         }
       ],

@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, Pressable, Image, Linking, ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../theme";
 import { Ionicons } from "@expo/vector-icons";
 import { AppUpdate } from "../utils/updateCheck";
@@ -30,8 +31,8 @@ export default function UpdateGate({ decision, onDismiss }: Props) {
   const isBlocked = kind === "maintenance" || kind === "force";
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.card}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View
           style={[
             styles.iconWrap,
@@ -64,7 +65,7 @@ export default function UpdateGate({ decision, onDismiss }: Props) {
           />
         </View>
 
-        <Text style={[styles.title, { color: colors.text }]}>{update.title}</Text>
+        <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{update.title}</Text>
         <Text style={[styles.version, { color: colors.muted }]}>
           Version {update.version}
         </Text>
@@ -86,7 +87,8 @@ export default function UpdateGate({ decision, onDismiss }: Props) {
 
         {isBlocked ? (
           <Pressable
-            style={[styles.button, { backgroundColor: colors.primary }]}
+            accessibilityRole="button"
+            style={[styles.button, styles.blockingButton, { backgroundColor: colors.primary }]}
             onPress={openUpdate}
           >
             <Text style={styles.buttonText}>Update now</Text>
@@ -94,7 +96,8 @@ export default function UpdateGate({ decision, onDismiss }: Props) {
         ) : (
           <View style={styles.row}>
             <Pressable
-              style={[styles.secondary, { borderColor: colors.overlay }]}
+              accessibilityRole="button"
+              style={[styles.secondary, { borderColor: colors.border }]}
               onPress={onDismiss}
             >
               <Text style={[styles.secondaryText, { color: colors.muted }]}>
@@ -102,6 +105,7 @@ export default function UpdateGate({ decision, onDismiss }: Props) {
               </Text>
             </Pressable>
             <Pressable
+              accessibilityRole="button"
               style={[styles.button, { backgroundColor: colors.primary, flex: 1 }]}
               onPress={openUpdate}
             >
@@ -110,7 +114,7 @@ export default function UpdateGate({ decision, onDismiss }: Props) {
           </View>
         )}
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -127,6 +131,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 28,
     borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   iconWrap: {
     width: 72,
@@ -174,9 +179,8 @@ const styles = StyleSheet.create({
     marginTop: 22,
     width: "100%",
   },
+  blockingButton: { marginTop: 22, width: "100%" },
   button: {
-    marginTop: 22,
-    width: "100%",
     paddingVertical: 15,
     borderRadius: 14,
     alignItems: "center",

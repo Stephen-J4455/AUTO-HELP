@@ -158,11 +158,14 @@ export default function Cart({ navigateTo }: { navigateTo?: (name: string, param
 
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.loaderWrap}>
-          <ActivityIndicator size="large" color={colors.primary} />
+      <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.header}>
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>My Cart</Text>
         </View>
-      </View>
+        <View style={styles.loaderWrap}>
+          <ActivityIndicator color={colors.primary} accessibilityLabel="Loading cart" />
+        </View>
+      </SafeAreaView>
     );
   }
 

@@ -79,14 +79,14 @@ export default function Orders({ navigation }: { navigation: any }) {
   if (loading) {
     return (
       <View style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator accessibilityLabel="Loading your orders" color={colors.primary} />
       </View>
     );
   }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-     
+
       <FlatList
         data={orders}
         keyExtractor={(item) => item.id}
@@ -95,7 +95,7 @@ export default function Orders({ navigation }: { navigation: any }) {
           const meta = statusMeta(item.status);
           return (
             <TouchableOpacity
-              style={[styles.card, { backgroundColor: colors.surface }]}
+              style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
               activeOpacity={0.85}
               onPress={() => navigation.navigate('OrderDetails', { orderId: item.id })}
             >
@@ -161,6 +161,7 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center' },
   list: { padding: 16, paddingTop: 8, paddingBottom: 24, gap: 12 },
   card: {
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 16,
     padding: 14,
     shadowColor: '#000',

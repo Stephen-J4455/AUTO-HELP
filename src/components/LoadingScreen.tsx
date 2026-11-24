@@ -1,22 +1,22 @@
 import React from 'react';
-import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useTheme } from '../theme';
 
-/**
- * Shared app-loading / splash screen. This is the exact same visual used when
- * the app starts up (see App.tsx), so tapping "version" on the account screen
- * shows an identical animation rather than a different one.
- */
 export default function LoadingScreen({ message }: { message?: string }) {
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
+  const logoSize = Math.min(224, width * 0.65);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Image
-        source={require('../../assets/icon.png')}
-        style={styles.logo}
-        resizeMode="contain"
-      />
+      <View style={[styles.logo, { width: logoSize, height: logoSize }]}>
+        <Image
+          source={require('../../assets/splash_icon.png')}
+          // Frame the 1,200 × 1,200 region around the logo in the source image.
+          style={[styles.logoImage, { width: logoSize * 5 / 3, height: logoSize * 5 / 3, left: -logoSize * 0.31, top: -logoSize * 0.33 }]}
+          resizeMode="contain"
+        />
+      </View>
       <Text style={[styles.title, { color: colors.text }]}>AUTO HELP GH</Text>
       <Text style={[styles.subtitle, { color: colors.muted }]}>
         {message || 'Home of genuine parts'}
@@ -35,10 +35,11 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   logo: {
-    width: 96,
-    height: 96,
     borderRadius: 24,
-    marginBottom: 18,
+    overflow: 'hidden',
+  },
+  logoImage: {
+    position: 'absolute',
   },
   spinner: {
     marginTop: 18,

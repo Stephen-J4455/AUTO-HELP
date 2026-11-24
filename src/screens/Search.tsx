@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../supabase/supabase';
@@ -69,16 +70,17 @@ export default function Search({ navigateTo }: { navigateTo?: (name: string, par
   }, [products, query, activeBrand]);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}></Text>
+        <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Find parts</Text>
         <Text style={[styles.subtitle, { color: colors.muted }]}>Find by name, SKU, or brand</Text>
       </View>
 
-      <View style={[styles.searchBox, { backgroundColor: colors.surface }]}>
+      <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Ionicons name="search" size={20} color={colors.muted} />
         <TextInput
-          placeholder="Search parts, SKU, brand..."
+          accessibilityLabel="Search parts by name, SKU or brand"
+          placeholder="Search name, SKU or brand"
           placeholderTextColor={colors.muted}
           value={query}
           onChangeText={setQuery}
@@ -86,7 +88,7 @@ export default function Search({ navigateTo }: { navigateTo?: (name: string, par
           autoCapitalize="none"
         />
         {query ? (
-          <TouchableOpacity onPress={() => setQuery('')}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={8} onPress={() => setQuery('')}>
             <Ionicons name="close-circle" size={20} color={colors.muted} />
           </TouchableOpacity>
         ) : null}
@@ -105,7 +107,7 @@ export default function Search({ navigateTo }: { navigateTo?: (name: string, par
               onPress={() => setActiveBrand(item)}
               style={[
                 styles.brandChip,
-                { backgroundColor: active ? colors.primary : colors.surface, borderColor: colors.surface },
+                { backgroundColor: active ? colors.primary : colors.surface, borderColor: active ? colors.primary : colors.border },
               ]}
             >
               <Text style={{ color: active ? '#fff' : colors.text, fontWeight: '700', fontSize: 12 }}>{item}</Text>
@@ -129,6 +131,7 @@ export default function Search({ navigateTo }: { navigateTo?: (name: string, par
         </View>
       ) : (
         <FlatList
+          keyboardShouldPersistTaps="handled"
           data={filtered}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.results}
@@ -165,18 +168,19 @@ export default function Search({ navigateTo }: { navigateTo?: (name: string, par
           }
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 20 },
+  container: { flex: 1, paddingTop: 8 },
   header: { paddingHorizontal: 16, marginBottom: 10 },
   title: { fontSize: 28, fontWeight: '900' },
   subtitle: { marginTop: 4, fontSize: 13 },
   searchBox: {
     marginHorizontal: 16,
-    borderRadius: 30,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 14,
     height: 52,
     alignItems: 'center',
@@ -184,7 +188,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   input: { flex: 1, marginLeft: 10, fontSize: 15, fontWeight: '600' },
-  brandsList: { paddingHorizontal: 6,paddingBottom: 30, maxHeight: 45,},
+  brandsList: { paddingHorizontal: 16, maxHeight: 43, flexGrow: 0 },
   brandChip: {
     paddingHorizontal: 24,
     height: 34,
@@ -207,11 +211,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     flexDirection: 'row',
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
+
   },
   image: { width: 96, height: 96 },
   placeholder: { alignItems: 'center', justifyContent: 'center' },

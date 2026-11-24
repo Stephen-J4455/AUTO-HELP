@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TextInput, Image, TouchableOpacity, Dimensions, ScrollView, Animated, StatusBar, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, ScrollView, Animated, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import {Ionicons, MaterialCommunityIcons} from '@expo/vector-icons';
@@ -16,9 +16,10 @@ import MasonryGrid, { MasonryItem } from '../components/MasonryGrid';
 import { loadImageSize, peekImageSize, hasMeasuredImage } from '../utils/imageSize';
 import { useCart } from '../context/Cart';
 import { useAppAlert } from '../components/AppAlert';
+import ChallengeLink from '../components/ChallengeLink';
 
 const { width } = Dimensions.get('window');
-const isMobile = width < 768;
+const FEED_BATCH_SIZE = 10;
 
 // Feed layout metrics. `FEED_H_PADDING` matches the horizontal padding on the
 // feed section, and the gap sits between masonry columns.
@@ -125,8 +126,9 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
     [addingId, user?.id, addItem, showAlert],
   );
   const { categories: contextCategories, loading: categoriesLoading } = useCategories();
-  const [searchTerm, setSearchTerm] = React.useState('');
   const [latest, setLatest] = React.useState<Product[]>([]);
+  const [visibleCount, setVisibleCount] = React.useState(FEED_BATCH_SIZE);
+  const visibleProducts = React.useMemo(() => latest.slice(0, visibleCount), [latest, visibleCount]);
   const [loading, setLoading] = React.useState(true);
   const [unreadCount, setUnreadCount] = React.useState(0);
   const shimmer = React.useRef(new Animated.Value(0)).current;
@@ -137,9 +139,9 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
   const [dismissedFeedAds, setDismissedFeedAds] = React.useState<string[]>([]);
   const interleaved = React.useMemo(() => {
     const result: FeedEntry[] = [];
-    if (!latest.length) return result;
+    if (!visibleProducts.length) return result;
     let adIdx = 0;
-    latest.forEach((item, i) => {
+    visibleProducts.forEach((item, i) => {
       // Estimate the card's text block from the name's line count so the
       // masonry columns stay balanced while images are still unmeasured.
       const textHeight = CARD_TEXT_BASE + NAME_LINE_HEIGHT * nameLineCount(item.name);
@@ -161,7 +163,7 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
       }
     });
     return result;
-  }, [latest, feedAds, dismissedFeedAds]);
+  }, [visibleProducts, feedAds, dismissedFeedAds]);
 
   // Products persist only an image path, so the masonry layout has to learn
   // each image's intrinsic size at runtime to size the card without cropping.
@@ -169,27 +171,31 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
   // not re-trigger this effect forever.
   React.useEffect(() => {
     let cancelled = false;
-    const pending = latest.filter((p) => p.image?.uri && !p.imageSize && !hasMeasuredImage(p.image.uri));
+    const pending = visibleProducts.filter((p) => {
+      const uri = p.image?.uri;
+      return uri && !p.imageSize && (!hasMeasuredImage(uri) || peekImageSize(uri));
+    });
     if (!pending.length) return;
 
-    Promise.all(
-      pending.map((p) => loadImageSize(p.image.uri).then((size) => ({ id: p.id, size }))),
-    ).then((results) => {
-      if (cancelled) return;
-      const resolved = results.filter((r) => r.size).length;
-      if (!resolved) return;
-      setLatest((prev) =>
-        prev.map((p) => {
-          const match = results.find((r) => r.id === p.id);
-          return match?.size ? { ...p, imageSize: match.size } : p;
-        }),
-      );
+    const frame = requestAnimationFrame(() => {
+      void Promise.all(
+        pending.map(async (p) => [p.id, await loadImageSize(p.image.uri)] as const),
+      ).then((results) => {
+        if (cancelled) return;
+        const sizes = new Map(results);
+        if (!results.some(([, size]) => size)) return;
+        setLatest((previous) => previous.map((product) => {
+          const size = sizes.get(product.id);
+          return size ? { ...product, imageSize: size } : product;
+        }));
+      });
     });
 
     return () => {
       cancelled = true;
+      cancelAnimationFrame(frame);
     };
-  }, [latest]);
+  }, [visibleProducts]);
 
   // Keep the notification bell badge in sync with unread inbox entries.
   React.useEffect(() => {
@@ -264,6 +270,7 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
       }
 
       if (mounted) {
+        setLoading(false);
         setLatest(
           rows.map((p: any) => {
             const uri = getProductImageUri(p.images);
@@ -282,28 +289,34 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
           })
         );
       }
-
-      setLoading(false);
     }
-    load();
-    // start shimmer loop
-    Animated.loop(
+    void load();
+    return () => { mounted = false; };
+  }, []);
+
+  React.useEffect(() => {
+    if (!loading && !categoriesLoading) return;
+    const animation = Animated.loop(
       Animated.sequence([
-        Animated.timing(shimmer, { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.timing(shimmer, { toValue: 0.3, duration: 700, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 1, duration: 700, useNativeDriver: true, isInteraction: false }),
+        Animated.timing(shimmer, { toValue: 0.3, duration: 700, useNativeDriver: true, isInteraction: false }),
       ])
-    ).start();
-    return () => {
-      mounted = false;
-    };
-  }, [contextCategories]);
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [loading, categoriesLoading, shimmer]);
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false}>
-      <SafeAreaView
-          edges={['bottom']} style={[styles.container, { backgroundColor: colors.background , paddingTop: isMobile ? Math.max(0, (StatusBar.currentHeight || 0) - 20) : 30 }]}
+    <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={100}
+        onScroll={({ nativeEvent: { contentOffset, layoutMeasurement, contentSize } }) => {
+          if (visibleCount < latest.length && contentSize.height - contentOffset.y - layoutMeasurement.height < 620) {
+            setVisibleCount((count) => count === visibleCount ? Math.min(count + FEED_BATCH_SIZE, latest.length) : count);
+          }
+        }}
       >
-        <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
         <AppUpdateBanner appVersion={APP_VERSION} />
         <CallToOrderBanner />
         <MarketingBanner />
@@ -340,6 +353,8 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
             </TouchableOpacity>
           </View>
       <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel="Search parts"
         activeOpacity={0.85}
         onPress={() => navigateTo?.('search')}
         style={[
@@ -353,20 +368,12 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
               color={colors.muted}
               style={{ marginRight: 8 }}
             />
-            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <TextInput
-              style={styles.search}
-              placeholder="Search parts, VIN, SKU..."
-              placeholderTextColor="#999"
-              value={searchTerm}
-              editable={false}
-              showSoftInputOnFocus={false}
-            />
-              <MaterialCommunityIcons name="tune-variant" size={20} color={colors.primary} style={{ position: 'relative' }} />
-              </View>
+            <Text style={[styles.search, { color: colors.muted }]}>Search parts, SKU or brand</Text>
+            <MaterialCommunityIcons name="tune-variant" size={20} color={colors.primary} />
           </TouchableOpacity>
         </View>
 
+        <ChallengeLink onPress={() => navigateTo?.('Challenge')} />
         <AdCarousel placement="home_carousel" />
 
         <View style={styles.section}>
@@ -560,8 +567,8 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
             />
           )}
         </View>
-      </SafeAreaView>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -611,7 +618,7 @@ const styles = StyleSheet.create({
   },
   brandBadgeText: { color: "#fff", fontSize: 11, fontWeight: "900", letterSpacing: 0.4 },
   brandTagline: { marginTop: 4, fontSize: 11, fontWeight: "600" },
-  search: { padding: 18, borderRadius: 8 },
+  search: { flex: 1, fontSize: 14, paddingVertical: 15 },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",

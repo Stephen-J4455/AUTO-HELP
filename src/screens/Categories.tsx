@@ -1,3 +1,4 @@
+import PageHeader from '../components/PageHeader';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -12,18 +13,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
-import { useCategories } from '../context/Categories';
+import { Category, useCategories } from '../context/Categories';
 import { supabase } from '../supabase/supabase';
-
-interface CategoryWithCount {
-  id: number;
-  name: string;
-  slug: string;
-  description: string | null;
-  parent_id: number | null;
-  product_count: number;
-  image: string | null;
-}
 
 export default function Categories({
   navigateTo,
@@ -34,9 +25,8 @@ export default function Categories({
 }) {
   const { colors } = useTheme();
   const { categories, loading, refreshCategories } = useCategories();
-  const [categoriesWithCounts, setCategoriesWithCounts] = useState<CategoryWithCount[]>([]);
+  const [counts, setCounts] = useState<Partial<Record<number, number>>>({});
   const [refreshing, setRefreshing] = useState(false);
-  const [countLoading, setCountLoading] = useState(false);
   const openScreen = (name: string, params?: any) => {
     if (navigateTo) {
       navigateTo(name, params);
@@ -46,36 +36,22 @@ export default function Categories({
   };
 
   useEffect(() => {
-    loadCategoriesWithCounts();
+    let active = true;
+    if (!categories.length) return;
+    void Promise.all(
+      categories.map(async (category) => {
+        const { count } = await supabase
+          .from('products')
+          .select('id', { count: 'exact', head: true })
+          .eq('category_id', category.id)
+          .eq('active', true);
+        return [category.id, count ?? undefined] as const;
+      }),
+    ).then((entries) => {
+      if (active) setCounts(Object.fromEntries(entries));
+    }).catch((error) => console.warn('Failed to load category counts:', error));
+    return () => { active = false; };
   }, [categories]);
-
-  const loadCategoriesWithCounts = async () => {
-    if (categories.length === 0) return;
-    
-    setCountLoading(true);
-    try {
-      const categoriesData = await Promise.all(
-        categories.map(async (cat) => {
-          const { count } = await supabase
-            .from('products')
-            .select('id', { count: 'exact', head: true })
-            .eq('category_id', cat.id)
-            .eq('active', true);
-
-          return {
-            ...cat,
-            product_count: count || 0,
-            image: cat.image || null,
-          };
-        })
-      );
-      setCategoriesWithCounts(categoriesData);
-    } catch (error) {
-      console.error('Failed to load category counts:', error);
-    } finally {
-      setCountLoading(false);
-    }
-  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -83,7 +59,7 @@ export default function Categories({
     setRefreshing(false);
   };
 
-  const handleCategoryPress = (category: CategoryWithCount) => {
+  const handleCategoryPress = (category: Category) => {
     openScreen('CategoryProducts', {
       categoryId: category.id,
       categoryName: category.name,
@@ -91,27 +67,12 @@ export default function Categories({
     });
   };
 
-  if (loading || countLoading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.surface }]} onPress={() => navigation?.goBack?.()}>
-          <Ionicons name="chevron-back" size={20} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>Categories</Text>
-      </View>
+      <PageHeader title="Categories" onBack={() => navigation?.goBack?.()} />
 
       <FlatList
-        data={categoriesWithCounts}
+        data={categories}
         keyExtractor={(item) => String(item.id)}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
@@ -131,12 +92,12 @@ export default function Categories({
             <View style={styles.categoryOverlay} />
             <View style={styles.categoryContent}>
               <Text style={[styles.categoryName, { color: '#fff' }]}>{item.name}</Text>
-              <View style={styles.countBadge}>
+              {counts[item.id] !== undefined && <View style={styles.countBadge}>
                 <Ionicons name="cube" size={12} color={colors.primary} />
                 <Text style={[styles.countText, { color: colors.text }]}>
-                  {item.product_count} {item.product_count === 1 ? 'product' : 'products'}
+                  {counts[item.id]} {counts[item.id] === 1 ? 'product' : 'products'}
                 </Text>
-              </View>
+              </View>}
               {item.description && (
                 <Text
                   style={[styles.categoryDesc, { color: 'rgba(255, 255, 255, 0.8)' }]}
@@ -148,12 +109,14 @@ export default function Categories({
             </View>
           </TouchableOpacity>
         )}
-        ListEmptyComponent={
+        ListEmptyComponent={loading ? (
+          <ActivityIndicator accessibilityLabel="Loading categories" color={colors.primary} style={styles.loader} />
+        ) : (
           <View style={styles.emptyState}>
             <Ionicons name="folder-open-outline" size={48} color={colors.muted} />
             <Text style={[styles.emptyText, { color: colors.muted }]}>No categories available</Text>
           </View>
-        }
+        )}
         numColumns={2}
         columnWrapperStyle={styles.columnWrapper}
       />
@@ -163,10 +126,7 @@ export default function Categories({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 28, fontWeight: '900' },
+  loader: { marginTop: 32 },
   listContent: { paddingHorizontal: 8, paddingVertical: 8 },
   columnWrapper: { gap: 8, paddingHorizontal: 8, marginBottom: 8 },
   categoryCard: {

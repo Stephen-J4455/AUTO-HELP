@@ -510,7 +510,8 @@ export default function Checkout({ navigation }: { navigation: any }) {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {loading || locationsLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.muted }]}>Loading delivery options…</Text>
         </View>
       ) : (
         <>
@@ -899,6 +900,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, flexDirection: 'column', paddingTop: 12 },
   header: { paddingHorizontal: 16, marginBottom: 10 },
   title: { fontSize: 28, fontWeight: '900' },
+  loadingText: { marginTop: 10, fontSize: 14 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   card: { marginHorizontal: 16, borderRadius: 18, padding: 14, marginBottom: 12 },
   cardTitle: { fontSize: 16, fontWeight: '900', marginBottom: 10 },

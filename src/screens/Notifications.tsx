@@ -1,3 +1,5 @@
+import PageHeader from '../components/PageHeader';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTheme } from '../theme';
@@ -109,12 +111,8 @@ export default function Notifications({ navigation }: { navigation: any }) {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.surface }]} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={20} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>Notifications</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <PageHeader title="Notifications" onBack={() => navigation.goBack()}>
         {unreadCount > 0 ? (
           <TouchableOpacity
             style={[styles.markAllBtn, { backgroundColor: colors.primary }]}
@@ -125,7 +123,7 @@ export default function Notifications({ navigation }: { navigation: any }) {
             <Text style={styles.markAllText}>{saving ? 'Working…' : 'Mark all read'}</Text>
           </TouchableOpacity>
         ) : null}
-      </View>
+      </PageHeader>
 
       {loading ? (
         <View style={styles.center}>
@@ -177,15 +175,12 @@ export default function Notifications({ navigation }: { navigation: any }) {
           }
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 40 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, marginBottom: 10 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 28, fontWeight: '900' },
+  container: { flex: 1 },
   markAllBtn: { marginLeft: 'auto', paddingHorizontal: 12, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   markAllText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },

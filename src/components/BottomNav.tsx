@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Animated, Easing, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,7 +11,7 @@ type Route = {
   key: string;
   label: string;
   icon?: string;
-  component: React.ComponentType<any>;
+  getComponent: () => React.ComponentType<any>;
 };
 
 export default function BottomNav({
@@ -19,86 +19,71 @@ export default function BottomNav({
   navigation,
   active: activeProp,
   onActiveChange,
+  reducedMotion,
 }: {
   routes: Route[];
   navigation?: any;
   active?: string;
   onActiveChange?: (key: string) => void;
+  reducedMotion: boolean;
 }) {
   const [internalActive, setInternalActive] = useState(routes[0]?.key || '');
   const active = activeProp ?? internalActive;
   const [loadedTabs, setLoadedTabs] = useState(() => new Set([active]));
-  const setActive = (key: string) => {
+  const setActive = React.useCallback((key: string) => {
     if (onActiveChange) onActiveChange(key);
     else setInternalActive(key);
-  };
+  }, [onActiveChange]);
+  const pageOpacity = React.useRef(new Animated.Value(1)).current;
+  const previousActive = React.useRef(active);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const route = useRoute<any>();
   const { items: cartItems } = useCart();
   const cartCount = cartItems.reduce((sum, it) => sum + (it.quantity || 0), 0);
 
-  // One animated value per tab drives the active/inactive transition. Created
-  // once (keyed on the stable set of route keys) so animation state persists.
-  const routeKeys = routes.map((r) => r.key).join('|');
-  const anims = React.useMemo(() => {
-    const map: Record<string, Animated.Value> = {};
-    const initial = active || routes[0]?.key;
-    routes.forEach((r) => {
-      map[r.key] = new Animated.Value(r.key === initial ? 1 : 0);
-    });
-    return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeKeys]);
-
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     setLoadedTabs((previous) => previous.has(active) ? previous : new Set(previous).add(active));
-  }, [active]);
-
-  React.useEffect(() => {
-    routes.forEach((r) => {
-      const v = anims[r.key];
-      if (!v) return;
-      Animated.timing(v, {
-        toValue: r.key === active ? 1 : 0,
-        duration: 260,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
+    const changed = previousActive.current !== active;
+    previousActive.current = active;
+    if (reducedMotion || !changed) {
+      pageOpacity.setValue(1);
+      return;
+    }
+    pageOpacity.setValue(0.5);
+    const transition = Animated.timing(pageOpacity, {
+      toValue: 1,
+      duration: 145,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+      isInteraction: false,
     });
-  }, [active, routes, anims]);
+    transition.start();
+    return () => transition.stop();
+  }, [active, pageOpacity, reducedMotion]);
 
   React.useEffect(() => {
     const targetTab = route?.params?.tab;
-    if (typeof targetTab === 'string' && routes.some((route) => route.key === targetTab)) {
+    if (typeof targetTab === 'string' && routes.some((entry) => entry.key === targetTab)) {
       setActive(targetTab);
       navigation?.setParams?.({ tab: undefined });
     }
-  }, [navigation, route?.params?.tab, routes]);
+  }, [navigation, route?.params?.tab, routes, setActive]);
 
-  const navigateTo = (name: string, params?: any) => {
-    if (name === 'Main' || routes.find((r) => r.key === name)) {
-      // internal tab switch
-      setActive(name);
-      return;
-    }
-    navigation?.navigate(name, params);
-  };
+  const navigateTo = React.useCallback((name: string, params?: any) => {
+    if (routes.some((entry) => entry.key === name)) setActive(name);
+    else navigation?.navigate(name, params);
+  }, [navigation, routes, setActive]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.content}>
-        {routes.map((r) => (
-          loadedTabs.has(r.key) ? (
-            <View
-              key={r.key}
-              style={{ flex: 1, display: active === r.key ? 'flex' : 'none' }}
-            >
-              {React.createElement(r.component, { navigateTo })}
-            </View>
+      <Animated.View style={[styles.content, { opacity: pageOpacity }]}>
+        {routes.map((entry) => (
+          (active === entry.key || loadedTabs.has(entry.key)) ? (
+            <TabPane key={entry.key} route={entry} visible={active === entry.key} navigateTo={navigateTo} />
           ) : null
         ))}
-      </View>
+      </Animated.View>
 
       <ScreenAds screen={active} />
       <StickyAdFooter />
@@ -108,8 +93,8 @@ export default function BottomNav({
           styles.bar,
           {
             backgroundColor: colors.surface,
-            borderTopColor: colors.background,
-            paddingBottom: insets.bottom,
+            borderTopColor: colors.border,
+            paddingBottom: Math.max(insets.bottom, 4),
           },
         ]}
       >
@@ -117,38 +102,17 @@ export default function BottomNav({
           {routes.map((r) => {
             const isActive = active === r.key;
             const showBadge = r.key === 'cart' && cartCount > 0;
-            const v = anims[r.key] || new Animated.Value(0);
-            // Animate opacity + scale for the fill (avoids color interpolation,
-            // which can throw on some RN versions).
-            const chipOpacity = v.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
-            const chipScale = v.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] });
-            const labelScale = v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] });
             return (
-              <TouchableOpacity
+              <Pressable
                 key={r.key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isActive }}
+                accessibilityLabel={showBadge ? `${r.label}, ${cartCount} items` : r.label}
                 onPress={() => setActive(r.key)}
-                activeOpacity={0.7}
-                style={styles.tab}
+                style={({ pressed }) => [styles.tab, { opacity: pressed ? 0.68 : 1 }]}
               >
-                <View style={styles.iconWrap}>
-                  <Animated.View
-                    style={[
-                      StyleSheet.absoluteFill,
-                      {
-                        backgroundColor: colors.primary,
-                        opacity: chipOpacity,
-                        transform: [{ scale: chipScale }],
-                        borderRadius: 16,
-                      },
-                    ]}
-                  />
-                  <Animated.View style={{ transform: [{ scale: chipScale }] }}>
-                    <Ionicons
-                      name={r.icon as any}
-                      size={20}
-                      color={isActive ? '#fff' : colors.muted}
-                    />
-                  </Animated.View>
+                <View style={[styles.iconWrap, isActive && { backgroundColor: colors.primary }]}>
+                  <Ionicons name={r.icon as any} size={20} color={isActive ? '#fff' : colors.muted} />
                   {showBadge ? (
                     <View
                       style={[
@@ -170,19 +134,18 @@ export default function BottomNav({
                     </View>
                   ) : null}
                 </View>
-                <Animated.Text
+                <Text
                   style={[
                     styles.tabLabel,
                     {
                       color: isActive ? colors.primary : colors.muted,
                       fontWeight: isActive ? '900' : '700',
-                      transform: [{ scale: labelScale }],
                     },
                   ]}
                 >
                   {r.label}
-                </Animated.Text>
-              </TouchableOpacity>
+                </Text>
+              </Pressable>
             );
           })}
         </View>
@@ -191,14 +154,28 @@ export default function BottomNav({
   );
 }
 
+const TabPane = React.memo(function TabPane({ route, visible, navigateTo }: {
+  route: Route;
+  visible: boolean;
+  navigateTo: (name: string, params?: any) => void;
+}) {
+  const Screen = route.getComponent();
+  return (
+    <View style={visible ? styles.content : styles.hidden}>
+      <Screen navigateTo={navigateTo} />
+    </View>
+  );
+});
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { flex: 1 },
+  hidden: { display: 'none' },
   bar: {
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingTop: 8,
+    paddingTop: 5,
     paddingHorizontal: 4,
   },
   tabsRow: {
@@ -213,8 +190,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     gap: 4,
   },
-  // Pill-shaped (fully rounded) chip behind the icon; fills with the primary
-  // color when active and animates in/out on tab change.
   iconWrap: {
     position: 'relative',
     width: 48,

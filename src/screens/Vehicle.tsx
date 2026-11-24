@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   Pressable,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme';
 import { supabase } from '../supabase/supabase';
@@ -171,14 +172,23 @@ export default function Vehicle({ navigateTo }: { navigateTo?: (name: string, pa
 
   React.useEffect(() => {
     void loadVehicles();
+  }, [loadVehicles]);
+
+  React.useEffect(() => {
     void loadMyCars();
-    Animated.loop(
+  }, [loadMyCars]);
+
+  React.useEffect(() => {
+    if (!loading) return;
+    const animation = Animated.loop(
       Animated.sequence([
-        Animated.timing(shimmer, { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.timing(shimmer, { toValue: 0.3, duration: 700, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 1, duration: 700, useNativeDriver: true, isInteraction: false }),
+        Animated.timing(shimmer, { toValue: 0.3, duration: 700, useNativeDriver: true, isInteraction: false }),
       ])
-    ).start();
-  }, [loadVehicles, loadMyCars, shimmer]);
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [loading, shimmer]);
 
   const normalizedQuery = query.trim().toLowerCase();
   const filtered = React.useMemo(() => {
@@ -467,7 +477,7 @@ export default function Vehicle({ navigateTo }: { navigateTo?: (name: string, pa
   const yearLabel = (car: UserCar) => (car.year_to ? `${car.year}-${car.year_to}` : String(car.year));
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
           <View style={{ flex: 1 }}>
@@ -831,12 +841,12 @@ export default function Vehicle({ navigateTo }: { navigateTo?: (name: string, pa
           ) : null}
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 30 },
+  container: { flex: 1, paddingTop: 8 },
   header: { paddingHorizontal: 16, paddingBottom: 12 },
   headerTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
   title: { fontSize: 28, fontWeight: '900', letterSpacing: 0.3 },

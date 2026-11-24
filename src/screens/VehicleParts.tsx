@@ -73,13 +73,16 @@ export default function VehicleParts({ route, navigation }: { route: any; naviga
   }, [navigation, vehicleName]);
 
   React.useEffect(() => {
-    Animated.loop(
+    if (!loading) return;
+    const animation = Animated.loop(
       Animated.sequence([
-        Animated.timing(shimmer, { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.timing(shimmer, { toValue: 0.3, duration: 700, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 1, duration: 700, useNativeDriver: true, isInteraction: false }),
+        Animated.timing(shimmer, { toValue: 0.3, duration: 700, useNativeDriver: true, isInteraction: false }),
       ])
-    ).start();
-  }, [shimmer]);
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [loading, shimmer]);
 
   const loadData = React.useCallback(async () => {
     if (!vehicleId) {

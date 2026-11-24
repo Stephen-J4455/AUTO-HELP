@@ -1,3 +1,5 @@
+import PageHeader from '../components/PageHeader';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React from 'react';
 import {
   ActivityIndicator,
@@ -153,9 +155,12 @@ export default function OrderDetails({ route, navigation }: { route: any; naviga
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <PageHeader title="Order details" onBack={() => navigation.goBack()} />
+        <View style={[styles.container, styles.center]}>
+          <ActivityIndicator color={colors.primary} accessibilityLabel="Loading order" />
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -211,14 +216,8 @@ export default function OrderDetails({ route, navigation }: { route: any; naviga
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { backgroundColor: colors.surface }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backIcon}>
-          <Ionicons name="arrow-back" size={22} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Order Details</Text>
-        <View style={{ width: 22 }} />
-      </View>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <PageHeader title="Order details" onBack={() => navigation.goBack()} />
 
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={[styles.hero, { backgroundColor: colors.surface }]}>
@@ -363,25 +362,13 @@ export default function OrderDetails({ route, navigation }: { route: any; naviga
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 44,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  backIcon: { padding: 2 },
-  headerTitle: { fontSize: 18, fontWeight: '900' },
   scroll: { padding: 16, paddingBottom: 28, gap: 12 },
   hero: {
     borderRadius: 18,

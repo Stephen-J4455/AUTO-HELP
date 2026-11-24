@@ -1,10 +1,8 @@
 import React, { useRef, useState } from 'react';
-import { View, Text, StyleSheet, ImageBackground, Dimensions, ScrollView, TouchableOpacity } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { StatusBar as RNStatusBar } from 'react-native';
-import { dark } from '../theme';
-
-const { width, height } = Dimensions.get('window');
+import { FlatList, ImageBackground, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { useReduceMotion } from '../utils/useReduceMotion';
 
 const slides = [
   {
@@ -40,128 +38,74 @@ type Props = {
 
 export default function Onboarding({ onFinish }: Props) {
   const [index, setIndex] = useState(0);
-  const scrollRef = useRef<ScrollView | null>(null);
-  const insets = useSafeAreaInsets();
-  const colors = dark; // Force onboarding to always use dark theme (semantic keys)
-
-  const handleScroll = (e: any) => {
-    const x = e.nativeEvent.contentOffset.x;
-    const i = Math.round(x / width);
-    setIndex(i);
-  };
+  const [heroHeight, setHeroHeight] = useState(1);
+  const list = useRef<FlatList<(typeof slides)[number]>>(null);
+  const { width } = useWindowDimensions();
+  const reducedMotion = useReduceMotion();
+  const last = index === slides.length - 1;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} >
-      <RNStatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
-      <View style={[styles.statusBarOverlay, { height: insets.top, backgroundColor: colors.surface }]} />
-      <ScrollView
-        ref={(r) => { scrollRef.current = r }}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={handleScroll}
-      >
-        {slides.map((s, i) => (
-          <ImageBackground key={i} source={s.image} style={styles.slide} resizeMode="cover">
-            <View style={[styles.overlay, { backgroundColor: colors.overlay }]} />
-            <View style={styles.content} pointerEvents="none">
-              <Text style={[styles.title, { color: colors.text }]}>{s.title}</Text>
-              <Text style={[styles.subtitle, { color: colors.muted }]}>{s.subtitle}</Text>
-            </View>
-          </ImageBackground>
-        ))}
-      </ScrollView>
-
+    <SafeAreaView style={styles.container}>
+      <StatusBar style="light" />
+      <View style={styles.hero} onLayout={(event) => setHeroHeight(event.nativeEvent.layout.height)}>
+        <FlatList
+          ref={list}
+          data={slides}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          initialNumToRender={2}
+          windowSize={3}
+          getItemLayout={(_, itemIndex) => ({ length: width, offset: width * itemIndex, index: itemIndex })}
+          keyExtractor={(slide) => slide.title}
+          onMomentumScrollEnd={({ nativeEvent }) => setIndex(Math.min(slides.length - 1, Math.max(0, Math.round(nativeEvent.contentOffset.x / width))))}
+          renderItem={({ item }) => (
+            <ImageBackground source={item.image} style={[styles.slide, { width, height: heroHeight }]} resizeMode="cover">
+              <View style={styles.overlay} />
+              <View style={styles.copy}>
+                <Text accessibilityRole="header" style={styles.title}>{item.title}</Text>
+                <Text style={styles.subtitle}>{item.subtitle}</Text>
+              </View>
+            </ImageBackground>
+          )}
+        />
+      </View>
       <View style={styles.footer}>
-        <View style={styles.pagination}>
-          {slides.map((_, i) => (
-            <View key={i} style={[styles.dot, index === i && { backgroundColor: colors.primary, width: 18, borderRadius: 9 }]} />
+        <View style={styles.pagination} accessible accessibilityLabel={`Page ${index + 1} of ${slides.length}`}>
+          {slides.map((slide, itemIndex) => (
+            <View key={slide.title} style={[styles.dot, index === itemIndex && styles.activeDot]} />
           ))}
         </View>
-
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: colors.primary }]}
-          activeOpacity={0.8}
+        <Pressable
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.button, { opacity: pressed ? 0.8 : 1 }]}
           onPress={() => {
-            if (index === slides.length - 1) {
-              onFinish ? onFinish() : null;
-            } else {
-              scrollRef.current?.scrollTo({ x: (index + 1) * width, animated: true });
+            if (last) onFinish?.();
+            else {
+              list.current?.scrollToOffset({ offset: (index + 1) * width, animated: !reducedMotion });
+              setIndex(index + 1);
             }
           }}
         >
-          <Text style={[styles.buttonText, { color: colors.text }]}>{index === slides.length - 1 ? 'Get Started' : 'Next'}</Text>
-        </TouchableOpacity>
+          <Text style={styles.buttonText}>{last ? 'Get started' : 'Next'}</Text>
+        </Pressable>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'transparent', // This will be set dynamically
-  },
-  slide: {
-    width,
-    height,
-    justifyContent: 'flex-end',
-  },
-  overlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.35)'
-  },
-  content: {
-    paddingHorizontal: 24,
-    paddingBottom: 160,
-    alignItems: 'flex-start',
-  },
-  title: {
-    fontSize: 34,
-    fontWeight: '700',
-    marginBottom: 8,
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-  },
-  statusBarOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    backgroundColor: 'transparent',
-    zIndex: 20,
-  },
-  footer: {
-    position: 'absolute',
-    bottom: 40,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  pagination: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.35)',
-    marginHorizontal: 6,
-  },
-  button: {
-    paddingHorizontal: 34,
-    paddingVertical: 12,
-    borderRadius: 28,
-    elevation: 2,
-  },
-  buttonText: {
-    fontWeight: '700',
-    fontSize: 16,
-  },
+  container: { flex: 1, backgroundColor: '#20151b' },
+  hero: { flex: 1 },
+  slide: { justifyContent: 'flex-end' },
+  overlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(22,13,18,0.42)' },
+  copy: { paddingHorizontal: 24, paddingBottom: 28, gap: 8 },
+  title: { fontSize: 34, color: '#fff7f8', fontWeight: '900', letterSpacing: -0.9 },
+  subtitle: { fontSize: 16, lineHeight: 22, color: '#fff0f4' },
+  footer: { padding: 18, gap: 14 },
+  pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  dot: { width: 7, height: 7, borderRadius: 6, backgroundColor: '#755b69' },
+  activeDot: { width: 21, backgroundColor: '#ffd2de' },
+  button: { minHeight: 48, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 16, backgroundColor: '#a32a4a', alignItems: 'center', justifyContent: 'center' },
+  buttonText: { fontWeight: '800', fontSize: 16, color: '#fff' },
 });

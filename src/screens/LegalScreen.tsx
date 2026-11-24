@@ -1,8 +1,8 @@
+import PageHeader from '../components/PageHeader';
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
-import { Ionicons } from '@expo/vector-icons';
 import { APP_VERSION } from '../utils/appVersion';
 
 type Props = {
@@ -80,20 +80,7 @@ export default function LegalScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={[styles.backBtn, { backgroundColor: colors.surface }]}
-          onPress={() => navigation?.goBack?.()}
-        >
-          <Ionicons name="chevron-back" size={20} color={colors.text} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-            {data.title}
-          </Text>
-          <Text style={[styles.updated, { color: colors.muted }]}>{data.updated} • Document v{APP_VERSION}</Text>
-        </View>
-      </View>
+      <PageHeader title={data.title} subtitle={`${data.updated} · Document v${APP_VERSION}`} onBack={() => navigation?.goBack?.()} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -113,23 +100,6 @@ export default function LegalScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: { fontSize: 24, fontWeight: '900' },
-  updated: { fontSize: 12, marginTop: 2 },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 16, paddingBottom: 24 },
   section: { marginBottom: 18 },

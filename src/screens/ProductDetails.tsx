@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
 import {
-  ActivityIndicator,
   View,
   Text,
   StyleSheet,
@@ -29,6 +28,7 @@ import {
   toPublicProductImageUrl,
 } from "../utils/productImages";
 import { loadImageSize, peekImageSize } from "../utils/imageSize";
+import PageHeader from "../components/PageHeader";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { formatCedis } from "../utils/currency";
 
@@ -84,6 +84,8 @@ export default function ProductDetails({ route, navigation }: any) {
   const { productId } = route.params || {};
   const { user } = useAuth();
   const [product, setProduct] = useState<any>(null);
+  const [productError, setProductError] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [reviews, setReviews] = useState<any[]>([]);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
@@ -104,23 +106,31 @@ export default function ProductDetails({ route, navigation }: any) {
   useEffect(() => {
     let mounted = true;
     async function load() {
-      if (!productId) return;
+      if (!productId) {
+        setProductError(true);
+        return;
+      }
       const { data, error } = await supabase
         .from("products")
         .select("*")
         .eq("id", productId)
         .single();
-      if (error) {
-        console.warn("Failed to load product", error.message);
+      if (!mounted) return;
+      if (error || !data) {
+        setProductError(true);
         return;
       }
-      if (mounted) setProduct(data);
+      setProduct(data);
     }
-    load();
+    setProductError(false);
+    setProduct(null);
+    void load().catch(() => {
+      if (mounted) setProductError(true);
+    });
     return () => {
       mounted = false;
     };
-  }, [productId]);
+  }, [productId, loadAttempt]);
 
   useEffect(() => {
     let mounted = true;
@@ -339,9 +349,26 @@ export default function ProductDetails({ route, navigation }: any) {
 
   if (!product) {
     return (
-      <View style={[styles.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
+      <SafeAreaView style={[styles.wrapper, { backgroundColor: colors.background }]}>
+        <PageHeader title="Part details" onBack={() => navigation.goBack()} />
+        {productError ? (
+          <View style={styles.center}>
+            <Ionicons name="alert-circle-outline" size={34} color={colors.muted} />
+            <Text style={{ color: colors.text }}>This part could not be loaded.</Text>
+            {!!productId && (
+              <Pressable accessibilityRole="button" style={[styles.retry, { backgroundColor: colors.primary }]} onPress={() => setLoadAttempt((attempt) => attempt + 1)}>
+                <Text style={{ color: "#fff", fontWeight: "800" }}>Try again</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : (
+          <View accessibilityLabel="Loading part details" accessible style={styles.detailSkeleton}>
+            <View style={[styles.skeletonImage, { backgroundColor: colors.border }]} />
+            <View style={[styles.skeletonLine, { backgroundColor: colors.border, width: "72%" }]} />
+            <View style={[styles.skeletonLine, { backgroundColor: colors.border, width: "38%" }]} />
+          </View>
+        )}
+      </SafeAreaView>
     );
   }
 
@@ -952,7 +979,11 @@ export default function ProductDetails({ route, navigation }: any) {
 const styles = StyleSheet.create({
   wrapper: { flex: 1 },
   container: { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
+  retry: { paddingHorizontal: 18, paddingVertical: 13, borderRadius: 14 },
+  detailSkeleton: { padding: 16, gap: 13 },
+  skeletonImage: { height: 235, borderRadius: 22 },
+  skeletonLine: { height: 15, borderRadius: 8 },
   heroWrap: { position: "relative" },
   // Neutral stage behind the photo. `height` is applied per slide at render
   // time from the image's measured aspect ratio.

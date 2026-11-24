@@ -1,27 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Onboarding from './src/screens/Onboarding';
-import Home from './src/screens/Home';
-import Search from './src/screens/Search';
-import Cart from './src/screens/Cart';
-import Vehicle from './src/screens/Vehicle';
-import Account from './src/screens/Account';
-import Orders from './src/screens/Orders';
-import OrderDetails from './src/screens/OrderDetails';
-import Checkout from './src/screens/Checkout';
-import Categories from './src/screens/Categories';
-import CategoryProducts from './src/screens/CategoryProducts';
-import Notifications from './src/screens/Notifications';
-import VehicleParts from './src/screens/VehicleParts';
 import BottomNav from './src/components/BottomNav';
 import { useTheme } from './src/theme';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { NavigationContainer, useNavigation } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import AuthScreen from './src/screens/AuthScreen';
-import ForgotPassword from './src/screens/ForgotPassword';
 import UpdatePassword from './src/screens/UpdatePassword';
 import LegalScreen from './src/screens/LegalScreen';
 import { AuthProvider, useAuth } from './src/context/Auth';
@@ -36,6 +21,8 @@ import ChatBotLauncher from './src/components/ChatBotLauncher';
 import { fetchUpdateDecision, UpdateDecision } from './src/utils/updateCheck';
 import UpdateGate from './src/screens/UpdateGate';
 import { navigationRef } from './src/utils/navigation';
+import { useReduceMotion } from './src/utils/useReduceMotion';
+import { ChallengeVisibilityContext, useChallengeVisibility } from './src/features/challenge/visibility';
 
 // Lets the Account screen toggle whether the floating chat assistant is shown.
 export const ChatFabContext = React.createContext<{
@@ -45,6 +32,14 @@ export const ChatFabContext = React.createContext<{
 
 const FAB_HIDDEN_KEY = 'chatbot_fab_hidden';
 const Stack = createNativeStackNavigator();
+const routes = [
+  { key: 'home', label: 'Home', icon: 'home', getComponent: () => require('./src/screens/Home').default },
+  { key: 'search', label: 'Search', icon: 'search', getComponent: () => require('./src/screens/Search').default },
+  { key: 'vehicle', label: 'Vehicle', icon: 'car-sport', getComponent: () => require('./src/screens/Vehicle').default },
+  { key: 'cart', label: 'Cart', icon: 'cart', getComponent: () => require('./src/screens/Cart').default },
+  { key: 'account', label: 'Account', icon: 'person', getComponent: () => require('./src/screens/Account').default },
+];
+const TABS_WITH_CHAT = ['home', 'search', 'cart', 'account'];
 
 /**
  * Registers the device for push notifications once a user is signed in, and
@@ -71,10 +66,26 @@ function PushInit() {
 }
 
 function AppContent() {
+  const challengeVisibility = useChallengeVisibility();
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [onboardingLoaded, setOnboardingLoaded] = useState(false);
-  const { scheme } = useTheme();
-  const { session, loading, recoveryMode } = useAuth();
+  const { colors, scheme } = useTheme();
+  const reducedMotion = useReduceMotion();
+  const { loading, recoveryMode } = useAuth();
+  const navigationTheme = React.useMemo(() => {
+    const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: colors.primary,
+        background: colors.background,
+        card: colors.surface,
+        text: colors.text,
+        border: colors.border,
+      },
+    };
+  }, [colors, scheme]);
 
   // Check the admin-controlled `app_updates` table once the app is ready,
   // so we can show maintenance / force-update / optional-update prompts.
@@ -92,7 +103,6 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('home');
   const [currentRouteName, setCurrentRouteName] = useState('Main');
   const [chatFabHidden, setChatFabHiddenState] = useState(false);
-  const TABS_WITH_CHAT = ['home', 'search', 'cart', 'account'];
 
   // Load the user's preference for hiding the chat FAB from storage.
   React.useEffect(() => {
@@ -182,21 +192,20 @@ function AppContent() {
     );
   }
 
-  // Content is shown to everyone; the Account screen handles the logged-out state.
-  const routes = [
-    { key: 'home', label: 'Home', icon: 'home', component: Home },
-    { key: 'search', label: 'Search', icon: 'search', component: Search },
-    { key: 'vehicle', label: 'Vehicle', icon: 'car-sport', component: Vehicle },
-    { key: 'cart', label: 'Cart', icon: 'cart', component: Cart },
-    { key: 'account', label: 'Account', icon: 'person', component: Account },
-  ];
-
   return (
        <ChatFabContext.Provider value={{ hidden: chatFabHidden, setHidden: setChatFabHidden }}>
+       <ChallengeVisibilityContext.Provider value={challengeVisibility}>
        <SafeAreaProvider>
-         <NavigationContainer ref={navigationRef} onStateChange={handleNavigationStateChange}>
+         <NavigationContainer theme={navigationTheme} ref={navigationRef} onStateChange={handleNavigationStateChange}>
         <PushInit />
-        <Stack.Navigator>
+        <Stack.Navigator screenOptions={{
+          headerShadowVisible: false,
+          headerTintColor: colors.text,
+          headerTitleStyle: { fontWeight: '800' },
+          contentStyle: { backgroundColor: colors.background },
+          animation: reducedMotion ? 'none' : 'fade_from_bottom',
+          animationDuration: 180,
+        }}>
           <Stack.Screen name="Main" options={{ headerShown: false }}>
             {({ navigation }) => (
               <BottomNav
@@ -204,19 +213,21 @@ function AppContent() {
                 navigation={navigation}
                 active={activeTab}
                 onActiveChange={setActiveTab}
+                reducedMotion={reducedMotion}
               />
             )}
           </Stack.Screen>
-          <Stack.Screen name="ProductDetails" component={require('./src/screens/ProductDetails').default} options={{ headerShown: false }} />
-          <Stack.Screen name="CategoriesList" component={Categories} options={{ headerShown: false }} />
-          <Stack.Screen name="CategoryProducts" component={CategoryProducts} options={{ headerShown: false }} />
-          <Stack.Screen name="VehicleParts" component={VehicleParts} options={{ headerShown: false }} />
-          <Stack.Screen name="Notifications" component={Notifications} options={{ headerShown: false }} />
-          <Stack.Screen name="Orders" component={Orders} options={{ title: 'My Orders' }} />
-          <Stack.Screen name="OrderDetails" component={OrderDetails} options={{ headerShown: false }} />
-          <Stack.Screen name="Checkout" component={Checkout} options={{ title: 'Checkout' }} />
-          <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="ForgotPassword" component={ForgotPassword} options={{ headerShown: false }} />
+          <Stack.Screen name="ProductDetails" getComponent={() => require('./src/screens/ProductDetails').default} options={{ headerShown: false }} />
+          {challengeVisibility.enabled && <Stack.Screen name="Challenge" getComponent={() => require('./src/screens/Challenge').default} options={{ headerShown: false }} />}
+          <Stack.Screen name="CategoriesList" getComponent={() => require('./src/screens/Categories').default} options={{ headerShown: false }} />
+          <Stack.Screen name="CategoryProducts" getComponent={() => require('./src/screens/CategoryProducts').default} options={{ headerShown: false }} />
+          <Stack.Screen name="VehicleParts" getComponent={() => require('./src/screens/VehicleParts').default} options={{ headerShown: false }} />
+          <Stack.Screen name="Notifications" getComponent={() => require('./src/screens/Notifications').default} options={{ headerShown: false }} />
+          <Stack.Screen name="Orders" getComponent={() => require('./src/screens/Orders').default} options={{ title: 'My Orders' }} />
+          <Stack.Screen name="OrderDetails" getComponent={() => require('./src/screens/OrderDetails').default} options={{ headerShown: false }} />
+          <Stack.Screen name="Checkout" getComponent={() => require('./src/screens/Checkout').default} options={{ title: 'Checkout' }} />
+          <Stack.Screen name="Auth" getComponent={() => require('./src/screens/AuthScreen').default} options={{ headerShown: false }} />
+          <Stack.Screen name="ForgotPassword" getComponent={() => require('./src/screens/ForgotPassword').default} options={{ headerShown: false }} />
           <Stack.Screen name="UpdatePassword" component={UpdatePassword} options={{ headerShown: false }} />
           <Stack.Screen name="PrivacyPolicy" options={{ headerShown: false }}>
             {({ navigation }) => <LegalScreen navigation={navigation} route={{ params: { type: 'privacy' } }} />}
@@ -229,8 +240,9 @@ function AppContent() {
        <FullscreenAd />
        <PopupAd />
        {showChat ? <ChatBotLauncher /> : null}
-       <StatusBar style="dark" />
+       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
     </SafeAreaProvider>
+    </ChallengeVisibilityContext.Provider>
     </ChatFabContext.Provider>
   );
 }

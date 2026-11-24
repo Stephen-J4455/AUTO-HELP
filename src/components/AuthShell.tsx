@@ -37,10 +37,10 @@ export function useAuthPalette() {
   return {
     colors,
     isDark,
-    borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(15,23,42,0.10)",
-    fieldColor: isDark ? "#18181b" : "#f6f7f9",
+    borderColor: colors.border,
+    fieldColor: colors.background,
     accentRing: isDark ? "rgba(128,0,32,0.35)" : "rgba(128,0,32,0.14)",
-    kickerColor: isDark ? "rgba(255,255,255,0.55)" : "#5b6472",
+    kickerColor: colors.muted,
     glowColor: isDark ? "rgba(128,0,32,0.30)" : "rgba(128,0,32,0.10)",
   };
 }
@@ -92,6 +92,7 @@ export function AuthField({
         <Ionicons name={icon} size={18} color={colors.muted} />
         <TextInput
           ref={inputRef}
+          accessibilityLabel={label}
           style={[styles.input, { color: colors.text }]}
           placeholder={placeholder}
           placeholderTextColor={colors.muted}
