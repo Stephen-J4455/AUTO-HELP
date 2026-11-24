@@ -16,10 +16,11 @@ export function toPublicProductImageUrl(path: string): string {
 
 export function getProductImageUri(images: unknown): string | null {
   if (!Array.isArray(images) || !images.length) return null;
-  const first = images[0];
-  if (!first || typeof first !== 'object' || !('path' in first)) return null;
-  const path = (first as { path?: unknown }).path;
-  if (typeof path !== 'string' || !path.trim()) return null;
-  return toPublicProductImageUrl(path);
+  for (const image of images) {
+    const path = typeof image === 'string' ? image :
+      image && typeof image === 'object' && 'path' in image ? image.path : null;
+    if (typeof path === 'string' && path.trim()) return toPublicProductImageUrl(path);
+  }
+  return null;
 }
 

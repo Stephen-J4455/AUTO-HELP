@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Platform, View } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import Onboarding from './src/screens/Onboarding';
 import BottomNav from './src/components/BottomNav';
@@ -14,32 +16,23 @@ import { storage } from './src/utils/storage';
 import { CartProvider } from './src/context/Cart';
 import { CategoryProvider } from './src/context/Categories';
 import { AppAlertProvider } from './src/components/AppAlert';
-import LoadingScreen from './src/components/LoadingScreen';
+import StartupSplash from './src/components/StartupSplash';
 import { addPushNotificationListeners, registerAndSaveToken } from './src/utils/pushNotifications';
 import { PopupAd, FullscreenAd } from './src/utils/remoteContent';
-import ChatBotLauncher from './src/components/ChatBotLauncher';
 import { fetchUpdateDecision, UpdateDecision } from './src/utils/updateCheck';
 import UpdateGate from './src/screens/UpdateGate';
-import { navigationRef } from './src/utils/navigation';
 import { useReduceMotion } from './src/utils/useReduceMotion';
 import { ChallengeVisibilityContext, useChallengeVisibility } from './src/features/challenge/visibility';
 
-// Lets the Account screen toggle whether the floating chat assistant is shown.
-export const ChatFabContext = React.createContext<{
-  hidden: boolean;
-  setHidden: (value: boolean) => void;
-}>({ hidden: false, setHidden: () => {} });
-
-const FAB_HIDDEN_KEY = 'chatbot_fab_hidden';
+const STARTUP_REQUEST_TIMEOUT_MS = 8000;
 const Stack = createNativeStackNavigator();
 const routes = [
   { key: 'home', label: 'Home', icon: 'home', getComponent: () => require('./src/screens/Home').default },
-  { key: 'search', label: 'Search', icon: 'search', getComponent: () => require('./src/screens/Search').default },
   { key: 'vehicle', label: 'Vehicle', icon: 'car-sport', getComponent: () => require('./src/screens/Vehicle').default },
+  { key: 'assistant', label: 'AI Assistant', icon: 'sparkles', getComponent: () => require('./src/components/ChatBot').default },
   { key: 'cart', label: 'Cart', icon: 'cart', getComponent: () => require('./src/screens/Cart').default },
   { key: 'account', label: 'Account', icon: 'person', getComponent: () => require('./src/screens/Account').default },
 ];
-const TABS_WITH_CHAT = ['home', 'search', 'cart', 'account'];
 
 /**
  * Registers the device for push notifications once a user is signed in, and
@@ -65,7 +58,7 @@ function PushInit() {
   return null;
 }
 
-function AppContent() {
+function AppContent({ startupComplete, onStartupReady }: { startupComplete: boolean; onStartupReady: () => void }) {
   const challengeVisibility = useChallengeVisibility();
   const [showOnboarding, setShowOnboarding] = useState(true);
   const [onboardingLoaded, setOnboardingLoaded] = useState(false);
@@ -91,41 +84,39 @@ function AppContent() {
   // so we can show maintenance / force-update / optional-update prompts.
   const [updateDecision, setUpdateDecision] = React.useState<UpdateDecision | null>(null);
   React.useEffect(() => {
-    if (onboardingLoaded && !loading) {
-      void fetchUpdateDecision().then(setUpdateDecision).catch(() => setUpdateDecision({ kind: "none" }));
-    }
-  }, [onboardingLoaded, loading]);
+    if (!onboardingLoaded) return;
+    const request = new AbortController();
+    let active = true;
+    const timer = setTimeout(() => request.abort(), STARTUP_REQUEST_TIMEOUT_MS);
+    void fetchUpdateDecision(request.signal)
+      .catch(() => ({ kind: 'none' } as const))
+      .then((decision) => { if (active) setUpdateDecision(decision); })
+      .finally(() => clearTimeout(timer));
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      request.abort();
+    };
+  }, [onboardingLoaded]);
 
-  // Track the active tab + current stack screen so we can decide whether to
-  // show the floating chat assistant. Must be declared before any early
-  // return to comply with the Rules of Hooks. It should only appear on the
-  // home, search, cart and account tabs (and not on other stacked screens).
+  const [homeReady, setHomeReady] = useState(false);
+  const onHomeReady = React.useCallback(() => setHomeReady(true), []);
+  const canRender = onboardingLoaded && !loading && (showOnboarding || recoveryMode || updateDecision !== null);
+  const waitingForHome = canRender && !showOnboarding && !recoveryMode && updateDecision?.kind === 'none' && !homeReady;
+
+  useEffect(() => {
+    if (startupComplete || !waitingForHome) return;
+    const timer = setTimeout(onHomeReady, STARTUP_REQUEST_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [startupComplete, waitingForHome, onHomeReady]);
+
+  useEffect(() => {
+    if (startupComplete || !canRender || waitingForHome) return;
+    const frame = requestAnimationFrame(onStartupReady);
+    return () => cancelAnimationFrame(frame);
+  }, [startupComplete, canRender, waitingForHome, onStartupReady]);
+
   const [activeTab, setActiveTab] = useState('home');
-  const [currentRouteName, setCurrentRouteName] = useState('Main');
-  const [chatFabHidden, setChatFabHiddenState] = useState(false);
-
-  // Load the user's preference for hiding the chat FAB from storage.
-  React.useEffect(() => {
-    void storage.getItem(FAB_HIDDEN_KEY).then((v) => {
-      if (v === 'true') setChatFabHiddenState(true);
-    });
-  }, []);
-
-  const setChatFabHidden = React.useCallback((value: boolean) => {
-    setChatFabHiddenState(value);
-    void storage.setItem(FAB_HIDDEN_KEY, value ? 'true' : 'false');
-  }, []);
-
-  // Fired on every navigation state change; reliably reflects the focused
-  // stack route so we can hide the FAB on non-main screens.
-  const handleNavigationStateChange = React.useCallback(() => {
-    setCurrentRouteName(navigationRef.current?.getCurrentRoute()?.name ?? 'Main');
-  }, []);
-
-  const showChat =
-    currentRouteName === 'Main' &&
-    TABS_WITH_CHAT.includes(activeTab) &&
-    !chatFabHidden;
 
   // Load onboarding status from storage on mount
   useEffect(() => {
@@ -155,8 +146,8 @@ function AppContent() {
     }
   };
 
-  if (!onboardingLoaded || loading) {
-    return <LoadingScreen />;
+  if (!canRender && !startupComplete) {
+    return null;
   }
 
   if (showOnboarding) {
@@ -193,10 +184,9 @@ function AppContent() {
   }
 
   return (
-       <ChatFabContext.Provider value={{ hidden: chatFabHidden, setHidden: setChatFabHidden }}>
        <ChallengeVisibilityContext.Provider value={challengeVisibility}>
        <SafeAreaProvider>
-         <NavigationContainer theme={navigationTheme} ref={navigationRef} onStateChange={handleNavigationStateChange}>
+         <NavigationContainer theme={navigationTheme}>
         <PushInit />
         <Stack.Navigator screenOptions={{
           headerShadowVisible: false,
@@ -213,10 +203,12 @@ function AppContent() {
                 navigation={navigation}
                 active={activeTab}
                 onActiveChange={setActiveTab}
+                onHomeReady={onHomeReady}
                 reducedMotion={reducedMotion}
               />
             )}
           </Stack.Screen>
+          <Stack.Screen name="Search" getComponent={() => require('./src/screens/Search').default} options={{ headerShown: false }} />
           <Stack.Screen name="ProductDetails" getComponent={() => require('./src/screens/ProductDetails').default} options={{ headerShown: false }} />
           {challengeVisibility.enabled && <Stack.Screen name="Challenge" getComponent={() => require('./src/screens/Challenge').default} options={{ headerShown: false }} />}
           <Stack.Screen name="CategoriesList" getComponent={() => require('./src/screens/Categories').default} options={{ headerShown: false }} />
@@ -237,24 +229,31 @@ function AppContent() {
           </Stack.Screen>
         </Stack.Navigator>
       </NavigationContainer>
-       <FullscreenAd />
-       <PopupAd />
-       {showChat ? <ChatBotLauncher /> : null}
+       {startupComplete && <FullscreenAd />}
+       {startupComplete && <PopupAd />}
        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
     </SafeAreaProvider>
     </ChallengeVisibilityContext.Provider>
-    </ChatFabContext.Provider>
   );
 }
 
 export default function App() {
+  const [startupComplete, setStartupComplete] = useState(false);
+  const finishStartup = React.useCallback(() => {
+    setStartupComplete(true);
+    SplashScreen.hide();
+  }, []);
+
   return (
     <KeyboardProvider>
       <AppAlertProvider>
         <AuthProvider>
           <CategoryProvider>
             <CartProvider>
-              <AppContent />
+              <View style={{ flex: 1, backgroundColor: '#ffffff' }}>
+                <AppContent startupComplete={startupComplete} onStartupReady={finishStartup} />
+                {Platform.OS === 'web' && !startupComplete && <StartupSplash />}
+              </View>
             </CartProvider>
           </CategoryProvider>
         </AuthProvider>

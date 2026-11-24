@@ -49,14 +49,15 @@ export function compareVersions(a: string, b: string): number {
  * Only `active = true` rows are readable by the public (RLS), and we filter
  * by platform (`all` or the current OS).
  */
-export async function fetchUpdateDecision(): Promise<UpdateDecision> {
+export async function fetchUpdateDecision(signal: AbortSignal): Promise<UpdateDecision> {
   const platform = Platform.OS === "ios" ? "ios" : "android";
   const { data, error } = await supabase
     .from("app_updates")
     .select("*")
     .eq("active", true)
     .or(`platform.eq.all,platform.eq.${platform}`)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .abortSignal(signal);
 
   if (error || !data) return { kind: "none" };
 

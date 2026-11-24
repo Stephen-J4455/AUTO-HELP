@@ -2,6 +2,7 @@ import { useColorScheme } from 'react-native';
 
 export const light = {
   primary: '#800020',
+  accentText: '#800020',
   danger: '#b32e26',
   background: '#f7f5f4',
   surface: '#ffffff',
@@ -13,6 +14,7 @@ export const light = {
 
 export const dark = {
   primary: '#b23a59',
+  accentText: '#e18fa5',
   danger: '#ff7979',
   background: '#181416',
   surface: '#242022',

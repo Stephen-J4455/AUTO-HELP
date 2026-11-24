@@ -1,18 +1,13 @@
 import React from 'react';
-import { Text, View, StyleSheet, TextStyle } from 'react-native';
+import { Linking, Platform, Text, View, StyleSheet, TextStyle } from 'react-native';
 import { useTheme } from '../theme';
-
-// A tiny, dependency-free Markdown renderer for chat messages.
-// Supports: headings (#..###), bold **x**, italic *x*, inline code `x`,
-// unordered lists (- / *), ordered lists (1.), and line breaks / paragraphs.
-// It's intentionally minimal — enough to make the assistant's replies
-// readable without pulling in a heavy markdown library.
 
 type Token =
   | { type: 'text'; value: string }
   | { type: 'bold'; value: string }
   | { type: 'italic'; value: string }
-  | { type: 'code'; value: string };
+  | { type: 'code'; value: string }
+  | { type: 'link'; value: string; url: string };
 
 function parseInline(text: string): Token[] {
   const tokens: Token[] = [];
@@ -26,6 +21,15 @@ function parseInline(text: string): Token[] {
   };
   while (i < text.length) {
     const ch = text[i];
+    if (ch === '[') {
+      const link = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/i.exec(text.slice(i));
+      if (link) {
+        flush();
+        tokens.push({ type: 'link', value: link[1], url: link[2] });
+        i += link[0].length;
+        continue;
+      }
+    }
     // inline code
     if (ch === '`' && text[i + 1] !== '`') {
       const end = text.indexOf('`', i + 1);
@@ -63,41 +67,47 @@ function parseInline(text: string): Token[] {
   return tokens;
 }
 
-function renderInline(text: string, base: TextStyle, codeBg: string): React.ReactNode[] {
+function renderInline(text: string, { accentText, surface }: ReturnType<typeof useTheme>['colors']): React.ReactNode[] {
   const tokens = parseInline(text);
   return tokens.map((t, idx) => {
     if (t.type === 'bold') {
       return (
-        <Text key={idx} style={[base, styles.bold]}>
+        <Text key={idx} style={styles.bold}>
           {t.value}
         </Text>
       );
     }
     if (t.type === 'italic') {
       return (
-        <Text key={idx} style={[base, styles.italic]}>
+        <Text key={idx} style={styles.italic}>
           {t.value}
         </Text>
       );
     }
     if (t.type === 'code') {
       return (
-        <Text key={idx} style={[styles.code, { backgroundColor: codeBg }]}>
+        <Text key={idx} style={[styles.code, { backgroundColor: surface, color: accentText }]}>
           {t.value}
         </Text>
       );
     }
-    return (
-      <Text key={idx} style={base}>
-        {t.value}
-      </Text>
-    );
+    if (t.type === 'link') {
+      const linkProps = Platform.OS === 'web'
+        ? { href: t.url, hrefAttrs: { target: '_blank', rel: 'noopener noreferrer' } }
+        : { onPress: () => { void Linking.openURL(t.url).catch(() => {}); } };
+      return (
+        <Text key={idx} accessibilityRole="link" style={[styles.link, { color: accentText }]} {...linkProps}>
+          {t.value}
+        </Text>
+      );
+    }
+    return t.value;
   });
 }
 
-export default function Markdown({ content, color }: { content: string; color: string }) {
+export default function Markdown({ content }: { content: string }) {
   const { colors } = useTheme();
-  const base: TextStyle = { color, fontSize: 14, lineHeight: 20 };
+  const base: TextStyle = { color: colors.text, fontSize: 16, lineHeight: 24 };
   const lines = content.split('\n');
   const blocks: React.ReactNode[] = [];
 
@@ -112,8 +122,8 @@ export default function Markdown({ content, color }: { content: string; color: s
       <View key={key} style={styles.listWrap}>
         {listItems.map((item, idx) => (
           <View key={idx} style={styles.listItem}>
-            <Text style={[base, styles.listMarker]}>{ordered ? `${listStart + idx}.` : '•'}</Text>
-            <Text style={[base, styles.listText]}>{renderInline(item, base, `${colors.primary}14`)}</Text>
+            <Text style={[base, styles.listMarker, { color: colors.accentText }]}>{ordered ? `${listStart + idx}.` : '•'}</Text>
+            <Text style={[base, styles.listText]}>{renderInline(item, colors)}</Text>
           </View>
         ))}
       </View>
@@ -131,10 +141,10 @@ export default function Markdown({ content, color }: { content: string; color: s
     if (headingMatch) {
       flushList(`l-${lineIdx}`);
       const level = headingMatch[1].length;
-      const sizes = [18, 16, 15];
+      const fontSize = [22, 19, 17][level - 1];
       blocks.push(
-        <Text key={`h-${lineIdx}`} style={[base, styles.heading, { fontSize: sizes[level - 1], color }]}>
-          {renderInline(headingMatch[2], base, `${colors.primary}14`)}
+        <Text key={`h-${lineIdx}`} accessibilityRole="header" style={[base, styles.heading, { fontSize, lineHeight: fontSize + 6, color: colors.accentText }]}>
+          {renderInline(headingMatch[2], colors)}
         </Text>
       );
       return;
@@ -169,7 +179,7 @@ export default function Markdown({ content, color }: { content: string; color: s
     flushList(`l-${lineIdx}`);
     blocks.push(
       <Text key={`p-${lineIdx}`} style={[base, styles.paragraph]}>
-        {renderInline(line, base, `${colors.primary}14`)}
+        {renderInline(line, colors)}
       </Text>
     );
   });
@@ -184,16 +194,17 @@ const styles = StyleSheet.create({
   heading: { fontWeight: '900', marginBottom: 6, marginTop: 2 },
   bold: { fontWeight: '800' },
   italic: { fontStyle: 'italic' },
+  link: { textDecorationLine: 'underline' },
   code: {
     fontFamily: 'monospace',
-    fontSize: 12,
+    fontSize: 14,
     paddingHorizontal: 4,
     paddingVertical: 1,
     borderRadius: 4,
   },
   listWrap: { marginBottom: 6, marginLeft: 2 },
-  listItem: { flexDirection: 'row', marginBottom: 2 },
-  listMarker: { width: 18, fontWeight: '800' },
+  listItem: { flexDirection: 'row', gap: 6, marginBottom: 2 },
+  listMarker: { minWidth: 16, fontWeight: '800' },
   listText: { flex: 1 },
   spacer: { height: 4 },
 });

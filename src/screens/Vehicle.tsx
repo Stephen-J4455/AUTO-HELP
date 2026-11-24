@@ -22,6 +22,7 @@ import { useAuth } from '../context/Auth';
 import { getProductImageUri } from '../utils/productImages';
 import { formatCedis } from '../utils/currency';
 import { cacheReadThrough } from '../utils/cache';
+import VehicleResearch from '../components/VehicleResearch';
 
 const VEHICLE_IMAGES_BUCKET = 'vehicle-images';
 
@@ -97,7 +98,13 @@ export default function Vehicle({ navigateTo }: { navigateTo?: (name: string, pa
 
   // --- "My car" state ---
   const [myCars, setMyCars] = React.useState<UserCar[]>([]);
+  const [carSettings, setCarSettings] = React.useState<'closed' | 'menu' | 'delete'>('closed');
+  const [editingCar, setEditingCar] = React.useState(false);
+  const [deletingCar, setDeletingCar] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState('');
   const [addCarVisible, setAddCarVisible] = React.useState(false);
+  const [researchPhotos, setResearchPhotos] = React.useState<{ vehicleId: string; images: string[] }>();
+  const [brokenVehiclePhotos, setBrokenVehiclePhotos] = React.useState<string[]>([]);
   const [carDetail, setCarDetail] = React.useState<UserCar | null>(null);
   const [carParts, setCarParts] = React.useState<Product[]>([]);
   const [carPartsLoading, setCarPartsLoading] = React.useState(false);
@@ -125,6 +132,9 @@ export default function Vehicle({ navigateTo }: { navigateTo?: (name: string, pa
   const [transmission, setTransmission] = React.useState('');
   const [notes, setNotes] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState('');
+  const [showLookup, setShowLookup] = React.useState(false);
+  const [showExtras, setShowExtras] = React.useState(false);
 
   const loadVehicles = React.useCallback(async () => {
     try {
@@ -305,7 +315,10 @@ export default function Vehicle({ navigateTo }: { navigateTo?: (name: string, pa
     const makeInput = vpicMake.trim();
     const parsedYear = Number(vpicYear);
     if (!makeInput || !vpicYear.trim()) return;
-    if (!Number.isInteger(parsedYear) || parsedYear < 1900 || parsedYear > 2100) return;
+    if (!Number.isInteger(parsedYear) || parsedYear < 1900 || parsedYear > 2100) {
+      setSaveError('Enter a model year between 1900 and 2100.');
+      return;
+    }
     setVpicLoading(true);
     try {
       const endpoint = `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/${encodeURIComponent(
@@ -340,6 +353,9 @@ export default function Vehicle({ navigateTo }: { navigateTo?: (name: string, pa
   }
 
   function resetCarForm() {
+    setSaveError('');
+    setShowLookup(false);
+    setShowExtras(false);
     setMake('');
     setModel('');
     setYear('');
@@ -358,15 +374,51 @@ export default function Vehicle({ navigateTo }: { navigateTo?: (name: string, pa
 
   function closeAddCar() {
     setAddCarVisible(false);
+    setEditingCar(false);
     resetCarForm();
   }
 
+  function editMyCar(car: UserCar) {
+    resetCarForm();
+    setMake(car.make);
+    setModel(car.model);
+    setYear(String(car.year));
+    setYearTo(car.year_to === null ? '' : String(car.year_to));
+    setTrim(car.trim ?? '');
+    setEngine(car.engine ?? '');
+    setBodyType(car.body_type ?? '');
+    setFuelType(car.fuel_type ?? '');
+    setTransmission(car.transmission ?? '');
+    setNotes(car.notes ?? '');
+    setCarSettings('closed');
+    setEditingCar(true);
+  }
+
+  function closeCarPage() {
+    if (saving || deletingCar) return;
+    if (editingCar || addCarVisible) {
+      closeAddCar();
+    } else if (carSettings !== 'closed') {
+      setCarSettings('closed');
+    } else {
+      setCarDetail(null);
+    }
+  }
+
   async function handleSaveCar() {
-    if (!user?.id) return;
+    if (!user?.id || saving) return;
     if (!make.trim() || !model.trim() || !year.trim()) return;
     const parsedYear = Number(year);
-    if (!Number.isInteger(parsedYear) || parsedYear < 1900 || parsedYear > 2100) return;
+    if (!Number.isInteger(parsedYear) || parsedYear < 1900 || parsedYear > 2100) {
+      setSaveError('Enter a model year between 1900 and 2100.');
+      return;
+    }
     const parsedYearTo = yearTo.trim() ? Number(yearTo) : null;
+    if (parsedYearTo !== null && (!Number.isInteger(parsedYearTo) || parsedYearTo < parsedYear || parsedYearTo > 2100)) {
+      setSaveError('Enter an end year between the model year and 2100.');
+      return;
+    }
+    setSaveError('');
     setSaving(true);
     try {
       const payload = {
@@ -380,28 +432,45 @@ export default function Vehicle({ navigateTo }: { navigateTo?: (name: string, pa
         body_type: bodyType.trim() || null,
         fuel_type: fuelType.trim() || null,
         transmission: transmission.trim() || null,
-        drivetrain: null,
         notes: notes.trim() || null,
       };
-      const { error } = await supabase.from('user_cars').insert(payload);
-      if (error) throw error;
+      if (editingCar && carDetail) {
+        const { data, error } = await supabase.from('user_cars').update(payload)
+          .eq('id', carDetail.id).eq('user_id', user.id).select().single();
+        if (error) throw error;
+        setResearchPhotos(undefined);
+        void openMyCar(data as UserCar);
+      } else {
+        const { error } = await supabase.from('user_cars').insert(payload);
+        if (error) throw error;
+      }
       closeAddCar();
       await loadMyCars();
     } catch (error: any) {
       console.warn('Failed to save car', error?.message);
+      setSaveError('Couldn’t save your car. Try again.');
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDeleteCar(car: UserCar) {
+    if (!user?.id || deletingCar || carSettings !== 'delete') return;
+    setDeletingCar(true);
+    setDeleteError('');
     try {
-      const { error } = await supabase.from('user_cars').delete().eq('id', car.id);
+      const { error } = await supabase.from('user_cars').delete()
+        .eq('id', car.id).eq('user_id', user.id).select('id').single();
       if (error) throw error;
-      if (carDetail?.id === car.id) setCarDetail(null);
+      setCarSettings('closed');
+      setCarDetail(null);
+      setResearchPhotos(undefined);
       await loadMyCars();
     } catch (error: any) {
       console.warn('Failed to delete car', error?.message);
+      setDeleteError('Couldn’t remove this car. Try again.');
+    } finally {
+      setDeletingCar(false);
     }
   }
 
@@ -474,7 +543,143 @@ export default function Vehicle({ navigateTo }: { navigateTo?: (name: string, pa
     </Animated.View>
   );
 
+  const savedPhoto = carDetail?.image ? toPublicImageUrl(carDetail.image) : null;
+  const detailPhotos = [...new Set([
+    ...(savedPhoto ? [savedPhoto] : []),
+    ...(researchPhotos && researchPhotos.vehicleId === carDetail?.id ? researchPhotos.images : []),
+  ])].filter((url) => !brokenVehiclePhotos.includes(url));
   const yearLabel = (car: UserCar) => (car.year_to ? `${car.year}-${car.year_to}` : String(car.year));
+
+  const showEditor = addCarVisible || editingCar;
+  const carEditor = showEditor ? (<>
+          <View style={styles.addCarHeader}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" disabled={saving}
+              style={[styles.modalHeaderBtn, { backgroundColor: colors.surface }]} onPress={closeAddCar}>
+              <Ionicons name="close" size={20} color={colors.text} />
+            </TouchableOpacity>
+            <Text accessibilityRole="header" style={[styles.addCarTitle, { color: colors.text }]}>{editingCar ? 'Edit car' : 'Add your car'}</Text>
+          </View>
+          <ScrollView contentContainerStyle={styles.form} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <View style={[styles.garageIntro, { backgroundColor: colors.surface }]}>
+              <View style={[styles.garageIcon, { backgroundColor: colors.background }]}>
+                <Ionicons name="car-sport-outline" size={29} color={colors.accentText} />
+              </View>
+              <Text style={[styles.garageCopy, { color: colors.muted }]}>
+                Save your car to browse matching parts and ask Autobot about fitment.
+              </Text>
+            </View>
+            <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: showLookup }}
+              style={[styles.lookupButton, { borderColor: colors.border }]} onPress={() => setShowLookup(!showLookup)}>
+              <Ionicons name="search-outline" size={19} color={colors.accentText} />
+              <Text style={[styles.disclosureText, { color: colors.text, flex: 1 }]}>Look up a make and model</Text>
+              <Ionicons name={showLookup ? "chevron-up" : "chevron-down"} size={18} color={colors.muted} />
+            </TouchableOpacity>
+            {showLookup && (
+            <View style={[styles.vpicSection, { backgroundColor: colors.surface }]}>
+              <View style={styles.row}>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => void openMakePicker()}
+                  style={[styles.selectorInput, styles.vpicMakeInput, { backgroundColor: colors.background, borderColor: colors.background }]}
+                >
+                  <Text style={[styles.selectorText, { color: vpicMake ? colors.text : colors.muted }]} numberOfLines={1}>
+                    {vpicMake || 'Select Make'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={16} color={colors.muted} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => setYearPickerVisible(true)}
+                  style={[styles.selectorInput, styles.vpicYearInput, { backgroundColor: colors.background, borderColor: colors.background }]}
+                >
+                  <Text style={[styles.selectorText, { color: vpicYear ? colors.text : colors.muted }]} numberOfLines={1}>
+                    {vpicYear || 'Year'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={16} color={colors.muted} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.fetchBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => void fetchVpicVehicles()}
+                  disabled={vpicLoading}
+                >
+                  <Text style={styles.fetchBtnText}>{vpicLoading ? '...' : 'Find'}</Text>
+                </TouchableOpacity>
+              </View>
+              {!!vpicResults.length && (
+                <View style={styles.vpicResultList}>
+                  {vpicResults.slice(0, 20).map((result) => {
+                    const makeName = (result.Make_Name || vpicMake).trim();
+                    const modelName = (result.Model_Name || '').trim();
+                    const isCurrent =
+                      make.trim().toLowerCase() === makeName.toLowerCase() &&
+                      model.trim().toLowerCase() === modelName.toLowerCase() &&
+                      year.trim() === vpicYear.trim();
+                    return (
+                      <View key={`${makeName}-${modelName}`} style={styles.vpicResultRow}>
+                        <Text style={[styles.vpicResultText, { color: colors.text }]} numberOfLines={1}>
+                          {vpicYear.trim()} {makeName} {modelName}
+                        </Text>
+                        <TouchableOpacity
+                          style={[styles.vpicAddBtn, { borderColor: isCurrent ? '#10B981' : colors.primary }]}
+                          onPress={() => addVehicleFromVpic(result)}
+                        >
+                          {isCurrent ? (
+                            <Ionicons name="checkmark" size={14} color="#10B981" />
+                          ) : (
+                            <Text style={[styles.vpicAddBtnText, { color: colors.primary }]}>Use</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+
+            )}
+            <View style={[styles.formSection, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Vehicle details</Text>
+              <TextInput accessibilityLabel="Make" placeholder="Make" placeholderTextColor={colors.muted} value={make} onChangeText={setMake}
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]} />
+              <TextInput accessibilityLabel="Model" placeholder="Model" placeholderTextColor={colors.muted} value={model} onChangeText={setModel}
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]} />
+              <View style={styles.row}>
+                <TextInput accessibilityLabel="Model year" placeholder="Model year" placeholderTextColor={colors.muted} keyboardType="number-pad" value={year} onChangeText={setYear}
+                  style={[styles.input, styles.halfInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]} />
+                <TextInput accessibilityLabel="End year, optional" placeholder="End year (optional)" placeholderTextColor={colors.muted} keyboardType="number-pad" value={yearTo} onChangeText={setYearTo}
+                  style={[styles.input, styles.halfInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]} />
+              </View>
+              <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: showExtras }}
+                style={styles.formDisclosure} onPress={() => setShowExtras(!showExtras)}>
+                <Text style={[styles.disclosureText, { color: colors.accentText }]}>Trim, engine and more</Text>
+                <Ionicons name={showExtras ? "chevron-up" : "chevron-down"} size={18} color={colors.accentText} />
+              </TouchableOpacity>
+              {showExtras && <>
+              <TextInput placeholder="Trim (Optional)" placeholderTextColor={colors.muted} value={trim} onChangeText={setTrim}
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]} />
+              <TextInput placeholder="Engine (Optional)" placeholderTextColor={colors.muted} value={engine} onChangeText={setEngine}
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]} />
+              <TextInput placeholder="Body Type (Optional)" placeholderTextColor={colors.muted} value={bodyType} onChangeText={setBodyType}
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]} />
+              <TextInput placeholder="Fuel Type (Optional)" placeholderTextColor={colors.muted} value={fuelType} onChangeText={setFuelType}
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]} />
+              <TextInput placeholder="Transmission (Optional)" placeholderTextColor={colors.muted} value={transmission} onChangeText={setTransmission}
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]} />
+              <TextInput placeholder="Notes (Optional)" placeholderTextColor={colors.muted} value={notes} onChangeText={setNotes}
+                multiline numberOfLines={3} textAlignVertical="top"
+                style={[styles.input, styles.notesInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]} />
+              </>}
+            </View>
+          </ScrollView>
+          <View style={[styles.saveVehicleBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {!!saveError && <Text accessibilityLiveRegion="polite" style={{ color: colors.danger }}>{saveError}</Text>}
+            <TouchableOpacity accessibilityRole="button" disabled={saving || !make.trim() || !model.trim() || !year.trim()}
+              style={[styles.saveVehicle, { backgroundColor: colors.primary, opacity: !make.trim() || !model.trim() || !year.trim() ? 0.45 : 1 }]}
+              onPress={() => void handleSaveCar()}>
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.fetchBtnText}>{editingCar ? 'Save changes' : 'Save vehicle'}</Text>}
+            </TouchableOpacity>
+          </View>
+  </>) : null;
 
   return (
     <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: colors.background }]}>
@@ -581,121 +786,126 @@ export default function Vehicle({ navigateTo }: { navigateTo?: (name: string, pa
         />
       )}
 
-      {/* --- Add My Car modal --- */}
-      <Modal visible={addCarVisible} animationType="slide" transparent={true} onRequestClose={closeAddCar}>
-        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity style={[styles.modalHeaderBtn, { backgroundColor: colors.surface }]} onPress={closeAddCar}>
-              <Ionicons name="close" size={20} color={colors.text} />
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Your Car</Text>
-            <TouchableOpacity
-              style={[styles.modalHeaderBtn, { backgroundColor: colors.primary }]}
-              disabled={saving}
-              onPress={() => void handleSaveCar()}
-            >
-              {saving ? <ActivityIndicator color="#fff" /> : <Ionicons name="checkmark" size={20} color="#fff" />}
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView contentContainerStyle={styles.form} showsVerticalScrollIndicator={false}>
-            <View style={[styles.heroCard, { backgroundColor: `${colors.primary}14` }]}>
-              <Text style={[styles.heroTitle, { color: colors.text }]}>Add a vehicle you own</Text>
-              <Text style={[styles.heroSubTitle, { color: colors.muted }]}>
-                Import from NHTSA vPIC, or add your car manually. We'll show parts that fit it.
-              </Text>
+      {/* My Car detail */}
+      <Modal visible={showEditor || !!carDetail} animationType="slide" onRequestClose={closeCarPage}>
+        <SafeAreaView style={[styles.detailContainer, { backgroundColor: colors.background }]}>
+          {showEditor ? carEditor : carDetail && <>
+            <View style={styles.detailHeader}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Back" disabled={deletingCar}
+                style={[styles.modalHeaderBtn, { backgroundColor: colors.surface }]} onPress={() => { setCarSettings('closed'); setCarDetail(null); }}>
+                <Ionicons name="chevron-back" size={20} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>My Car</Text>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Car settings" disabled={deletingCar}
+                accessibilityState={{ expanded: carSettings !== 'closed' }}
+                style={[styles.modalHeaderBtn, { backgroundColor: colors.surface }]}
+                onPress={() => setCarSettings(carSettings === 'closed' ? 'menu' : 'closed')}>
+                <Ionicons name="settings-outline" size={20} color={colors.accentText} />
+              </TouchableOpacity>
             </View>
 
-            <View style={[styles.vpicSection, { backgroundColor: colors.surface }]}>
-              <Text style={[styles.vpicTitle, { color: colors.text }]}>Import from NHTSA vPIC</Text>
-              <View style={styles.row}>
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={() => void openMakePicker()}
-                  style={[styles.selectorInput, styles.vpicMakeInput, { backgroundColor: colors.background, borderColor: colors.background }]}
-                >
-                  <Text style={[styles.selectorText, { color: vpicMake ? colors.text : colors.muted }]} numberOfLines={1}>
-                    {vpicMake || 'Select Make'}
-                  </Text>
-                  <Ionicons name="chevron-down" size={16} color={colors.muted} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={() => setYearPickerVisible(true)}
-                  style={[styles.selectorInput, styles.vpicYearInput, { backgroundColor: colors.background, borderColor: colors.background }]}
-                >
-                  <Text style={[styles.selectorText, { color: vpicYear ? colors.text : colors.muted }]} numberOfLines={1}>
-                    {vpicYear || 'Year'}
-                  </Text>
-                  <Ionicons name="chevron-down" size={16} color={colors.muted} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.fetchBtn, { backgroundColor: colors.primary }]}
-                  onPress={() => void fetchVpicVehicles()}
-                  disabled={vpicLoading}
-                >
-                  <Text style={styles.fetchBtnText}>{vpicLoading ? '...' : 'Fetch'}</Text>
-                </TouchableOpacity>
+            {carSettings !== 'closed' && (
+              <View style={[styles.carSettings, { backgroundColor: colors.surface }]}>
+                {carSettings === 'menu' ? <>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit car" style={styles.settingsAction} onPress={() => editMyCar(carDetail)}>
+                    <Ionicons name="create-outline" size={20} color={colors.accentText} />
+                    <Text style={[styles.settingsLabel, { color: colors.text }]}>Edit car</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Delete car" style={styles.settingsAction} onPress={() => { setDeleteError(''); setCarSettings('delete'); }}>
+                    <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                    <Text style={[styles.settingsLabel, { color: colors.danger }]}>Delete car</Text>
+                  </TouchableOpacity>
+                </> : <>
+                  <Text accessibilityRole="header" style={[styles.modalTitle, { color: colors.text }]}>Delete this car?</Text>
+                  <Text style={{ color: colors.muted }}>Remove the {yearLabel(carDetail)} {carDetail.make} {carDetail.model} from your saved cars?</Text>
+                  {!!deleteError && <Text accessibilityLiveRegion="polite" style={{ color: colors.danger }}>{deleteError}</Text>}
+                  <View style={styles.confirmActions}>
+                    <TouchableOpacity accessibilityRole="button" disabled={deletingCar} style={styles.settingsAction} onPress={() => setCarSettings('menu')}>
+                      <Text style={[styles.settingsLabel, { color: colors.text }]}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity accessibilityRole="button" disabled={deletingCar} style={styles.settingsAction} onPress={() => void handleDeleteCar(carDetail)}>
+                      {deletingCar ? <ActivityIndicator color={colors.danger} /> : <Text style={[styles.settingsLabel, { color: colors.danger }]}>Delete car</Text>}
+                    </TouchableOpacity>
+                  </View>
+                </>}
               </View>
-              {!!vpicResults.length && (
-                <View style={styles.vpicResultList}>
-                  {vpicResults.slice(0, 20).map((result) => {
-                    const makeName = (result.Make_Name || vpicMake).trim();
-                    const modelName = (result.Model_Name || '').trim();
-                    const isCurrent =
-                      make.trim().toLowerCase() === makeName.toLowerCase() &&
-                      model.trim().toLowerCase() === modelName.toLowerCase() &&
-                      year.trim() === vpicYear.trim();
-                    return (
-                      <View key={`${makeName}-${modelName}`} style={styles.vpicResultRow}>
-                        <Text style={[styles.vpicResultText, { color: colors.text }]} numberOfLines={1}>
-                          {vpicYear.trim()} {makeName} {modelName}
-                        </Text>
-                        <TouchableOpacity
-                          style={[styles.vpicAddBtn, { borderColor: isCurrent ? '#10B981' : colors.primary }]}
-                          onPress={() => addVehicleFromVpic(result)}
-                        >
-                          {isCurrent ? (
-                            <Ionicons name="checkmark" size={14} color="#10B981" />
-                          ) : (
-                            <Text style={[styles.vpicAddBtnText, { color: colors.primary }]}>Add</Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
+            )}
+            <ScrollView contentContainerStyle={styles.detailBody} showsVerticalScrollIndicator={false}>
+              <View style={[styles.detailHero, { backgroundColor: colors.surface }]}>
+                <View style={styles.detailHeroOverlay}>
+                  <View style={[styles.garageIcon, { backgroundColor: colors.background }]}>
+                    <Ionicons name="car-sport-outline" size={26} color={colors.accentText} />
+                  </View>
+                  <View style={styles.detailIdentity}>
+                    <Text style={[styles.detailHeroSub, { color: colors.accentText }]}>{yearLabel(carDetail)}</Text>
+                    <Text accessibilityRole="header" style={[styles.detailHeroTitle, { color: colors.text }]}>
+                      {carDetail.make} {carDetail.model}
+                    </Text>
+                    {carDetail.trim && <Text style={[styles.detailHeroSub, { color: colors.muted }]}>{carDetail.trim}</Text>}
+                  </View>
+                </View>
+                {detailPhotos.map((url) => (
+                  <View key={url} style={[styles.detailPhotoStage, { backgroundColor: colors.background }]}>
+                    <Image source={{ uri: url }} style={styles.detailHeroImage} resizeMode="contain"
+                      accessibilityLabel={url === savedPhoto ? 'Saved vehicle photo' : 'Vehicle model photo from web research'}
+                      onError={() => setBrokenVehiclePhotos(previous => [...previous, url])} />
+                    {url !== savedPhoto && <Text style={[styles.detailPhotoLabel, { color: colors.muted }]}>Model photo from the web</Text>}
+                  </View>
+                ))}
+              </View>
+
+              {specChips(carDetail).length > 0 && (
+                <View style={styles.detailChips}>
+                  {specChips(carDetail).map((chip, idx) => (
+                    <View key={idx} style={[styles.chip, { backgroundColor: colors.surface }]}>
+                      <Text style={[styles.chipText, { color: colors.muted }]}>{chip}</Text>
+                    </View>
+                  ))}
                 </View>
               )}
-            </View>
 
-            <View style={[styles.formSection, { backgroundColor: colors.surface }]}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Car Details</Text>
-              <TextInput placeholder="Make *" placeholderTextColor={colors.muted} value={make} onChangeText={setMake}
-                style={[styles.input, { color: colors.text, borderColor: colors.background }]} />
-              <TextInput placeholder="Model *" placeholderTextColor={colors.muted} value={model} onChangeText={setModel}
-                style={[styles.input, { color: colors.text, borderColor: colors.background }]} />
-              <View style={styles.row}>
-                <TextInput placeholder="Start Year *" placeholderTextColor={colors.muted} keyboardType="number-pad" value={year} onChangeText={setYear}
-                  style={[styles.input, styles.halfInput, { color: colors.text, borderColor: colors.background }]} />
-                <TextInput placeholder="End Year" placeholderTextColor={colors.muted} keyboardType="number-pad" value={yearTo} onChangeText={setYearTo}
-                  style={[styles.input, styles.halfInput, { color: colors.text, borderColor: colors.background }]} />
-              </View>
-              <TextInput placeholder="Trim (Optional)" placeholderTextColor={colors.muted} value={trim} onChangeText={setTrim}
-                style={[styles.input, { color: colors.text, borderColor: colors.background }]} />
-              <TextInput placeholder="Engine (Optional)" placeholderTextColor={colors.muted} value={engine} onChangeText={setEngine}
-                style={[styles.input, { color: colors.text, borderColor: colors.background }]} />
-              <TextInput placeholder="Body Type (Optional)" placeholderTextColor={colors.muted} value={bodyType} onChangeText={setBodyType}
-                style={[styles.input, { color: colors.text, borderColor: colors.background }]} />
-              <TextInput placeholder="Fuel Type (Optional)" placeholderTextColor={colors.muted} value={fuelType} onChangeText={setFuelType}
-                style={[styles.input, { color: colors.text, borderColor: colors.background }]} />
-              <TextInput placeholder="Transmission (Optional)" placeholderTextColor={colors.muted} value={transmission} onChangeText={setTransmission}
-                style={[styles.input, { color: colors.text, borderColor: colors.background }]} />
-              <TextInput placeholder="Notes (Optional)" placeholderTextColor={colors.muted} value={notes} onChangeText={setNotes}
-                multiline numberOfLines={3} textAlignVertical="top"
-                style={[styles.input, styles.notesInput, { color: colors.text, borderColor: colors.background }]} />
-            </View>
-          </ScrollView>
-        </View>
+              <VehicleResearch key={carDetail.id} vehicleId={carDetail.id} onImages={setResearchPhotos} />
+
+              <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Parts that fit your car</Text>
+              {carPartsLoading ? (
+                <View style={styles.detailPartsLoading}>
+                  <ActivityIndicator color={colors.primary} />
+                </View>
+              ) : carParts.length === 0 ? (
+                <View style={styles.detailEmpty}>
+                  <Ionicons name="cube-outline" size={40} color={colors.muted} />
+                  <Text style={[styles.emptySub, { color: colors.muted }]}>
+                    No matching parts found for this car yet.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.detailPartsGrid}>
+                  {carParts.map((p) => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={[styles.detailProductCard, { backgroundColor: colors.surface }]}
+                      activeOpacity={0.86}
+                      onPress={() => navigateTo?.('ProductDetails', { productId: p.id })}
+                    >
+                      <View style={[styles.detailProductImageWrap, { backgroundColor: colors.background }]}>
+                        {p.imageUri ? (
+                          <Image source={{ uri: p.imageUri }} style={styles.detailProductImage} />
+                        ) : (
+                          <Ionicons name="cube-outline" size={26} color={colors.muted} />
+                        )}
+                      </View>
+                      <View style={styles.detailProductBody}>
+                        {p.brand ? <Text style={[styles.brand, { color: colors.primary }]} numberOfLines={1}>{p.brand}</Text> : null}
+                        <Text style={[styles.detailProductTitle, { color: colors.text }]} numberOfLines={2}>{p.title}</Text>
+                        <Text style={[styles.price, { color: colors.primary }]}>{formatCedis(p.price)}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
+          </>}
+        </SafeAreaView>
       </Modal>
 
       {/* Make picker */}
@@ -753,94 +963,6 @@ export default function Vehicle({ navigateTo }: { navigateTo?: (name: string, pa
         </View>
       </Modal>
 
-      {/* My Car detail */}
-      <Modal visible={!!carDetail} animationType="slide" transparent={false} onRequestClose={() => setCarDetail(null)}>
-        <View style={[styles.detailContainer, { backgroundColor: colors.background }]}>
-          <View style={styles.detailHeader}>
-            <TouchableOpacity style={[styles.modalHeaderBtn, { backgroundColor: colors.surface }]} onPress={() => setCarDetail(null)}>
-              <Ionicons name="chevron-back" size={20} color={colors.text} />
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>My Car</Text>
-            <TouchableOpacity
-              style={[styles.modalHeaderBtn, { backgroundColor: `${colors.danger || '#ef4444'}1A` }]}
-              onPress={() => carDetail && handleDeleteCar(carDetail)}
-            >
-              <Ionicons name="trash-outline" size={18} color={colors.danger || '#ef4444'} />
-            </TouchableOpacity>
-          </View>
-
-          {carDetail ? (
-            <ScrollView contentContainerStyle={styles.detailBody} showsVerticalScrollIndicator={false}>
-              <View style={[styles.detailHero, { backgroundColor: colors.surface }]}>
-                {carDetail.image ? (
-                  <Image source={{ uri: toPublicImageUrl(carDetail.image) }} style={styles.detailHeroImage} />
-                ) : (
-                  <View style={[styles.detailHeroFallback, { backgroundColor: colors.background }]}>
-                    <Ionicons name="car-sport-outline" size={48} color={colors.muted} />
-                  </View>
-                )}
-                <View style={styles.detailHeroOverlay}>
-                  <View style={[styles.yearBadge, { backgroundColor: colors.primary }]}>
-                    <Text style={styles.yearBadgeText}>{yearLabel(carDetail)}</Text>
-                  </View>
-                  <Text style={[styles.detailHeroTitle, { color: colors.text }]}>
-                    {carDetail.make} {carDetail.model}
-                  </Text>
-                  {carDetail.trim ? <Text style={[styles.detailHeroSub, { color: colors.muted }]}>{carDetail.trim}</Text> : null}
-                </View>
-              </View>
-
-              {specChips(carDetail).length > 0 && (
-                <View style={styles.detailChips}>
-                  {specChips(carDetail).map((chip, idx) => (
-                    <View key={idx} style={[styles.chip, { backgroundColor: colors.surface }]}>
-                      <Text style={[styles.chipText, { color: colors.muted }]}>{chip}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Parts that fit your car</Text>
-              {carPartsLoading ? (
-                <View style={styles.detailPartsLoading}>
-                  <ActivityIndicator color={colors.primary} />
-                </View>
-              ) : carParts.length === 0 ? (
-                <View style={styles.detailEmpty}>
-                  <Ionicons name="cube-outline" size={40} color={colors.muted} />
-                  <Text style={[styles.emptySub, { color: colors.muted }]}>
-                    No matching parts found for this car yet.
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.detailPartsGrid}>
-                  {carParts.map((p) => (
-                    <TouchableOpacity
-                      key={p.id}
-                      style={[styles.detailProductCard, { backgroundColor: colors.surface }]}
-                      activeOpacity={0.86}
-                      onPress={() => navigateTo?.('ProductDetails', { productId: p.id })}
-                    >
-                      <View style={[styles.detailProductImageWrap, { backgroundColor: colors.background }]}>
-                        {p.imageUri ? (
-                          <Image source={{ uri: p.imageUri }} style={styles.detailProductImage} />
-                        ) : (
-                          <Ionicons name="cube-outline" size={26} color={colors.muted} />
-                        )}
-                      </View>
-                      <View style={styles.detailProductBody}>
-                        {p.brand ? <Text style={[styles.brand, { color: colors.primary }]} numberOfLines={1}>{p.brand}</Text> : null}
-                        <Text style={[styles.detailProductTitle, { color: colors.text }]} numberOfLines={2}>{p.title}</Text>
-                        <Text style={[styles.price, { color: colors.primary }]}>{formatCedis(p.price)}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </ScrollView>
-          ) : null}
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -894,16 +1016,21 @@ const styles = StyleSheet.create({
   emptySub: { marginTop: 4, fontWeight: '600', textAlign: 'center', fontSize: 13 },
   skeletonLine: { height: 12, borderRadius: 6 },
   // Modal / forms
-  modalContainer: { flex: 1, paddingTop: 30 },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 12 },
-  modalHeaderBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  addCarPage: { flex: 1 },
+  addCarHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 8 },
+  addCarTitle: { fontSize: 27, fontWeight: '900', letterSpacing: -0.6 },
+  modalHeaderBtn: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   modalTitle: { fontSize: 18, fontWeight: '900' },
-  form: { padding: 16, paddingBottom: 32, gap: 12 },
-  heroCard: { borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14 },
-  heroTitle: { fontSize: 16, fontWeight: '800' },
-  heroSubTitle: { marginTop: 4, fontSize: 12, fontWeight: '600' },
-  vpicSection: { borderRadius: 12, padding: 12, gap: 10 },
-  vpicTitle: { fontSize: 14, fontWeight: '800' },
+  form: { padding: 16, gap: 14, width: '100%', maxWidth: 640, alignSelf: 'center' },
+  garageIntro: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 19, padding: 14 },
+  garageIcon: { width: 51, height: 51, alignItems: 'center', justifyContent: 'center', borderRadius: 14 },
+  garageCopy: { flex: 1, fontSize: 14, lineHeight: 20 },
+  lookupButton: { minHeight: 49, borderWidth: 1, borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10 },
+  disclosureText: { fontWeight: '700', fontSize: 14 },
+  formDisclosure: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  saveVehicleBar: { padding: 12, borderTopWidth: StyleSheet.hairlineWidth, gap: 8 },
+  saveVehicle: { minHeight: 49, borderRadius: 15, alignItems: 'center', justifyContent: 'center', width: '100%', maxWidth: 608, alignSelf: 'center' },
+  vpicSection: { borderRadius: 16, padding: 12, gap: 10 },
   vpicMakeInput: { flex: 1 },
   vpicYearInput: { width: 92 },
   row: { flexDirection: 'row', gap: 10 },
@@ -916,7 +1043,7 @@ const styles = StyleSheet.create({
   vpicResultText: { flex: 1, fontWeight: '600' },
   vpicAddBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   vpicAddBtnText: { fontWeight: '700' },
-  formSection: { borderRadius: 12, padding: 12, gap: 8 },
+  formSection: { borderRadius: 19, padding: 14, gap: 9 },
   sectionTitle: { fontSize: 14, fontWeight: '800' },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, height: 48, fontSize: 14, fontWeight: '600' },
   halfInput: { flex: 1 },
@@ -930,13 +1057,19 @@ const styles = StyleSheet.create({
   pickerItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1 },
   pickerItemText: { fontSize: 14, fontWeight: '600' },
   // Detail
-  detailContainer: { flex: 1, paddingTop: 30 },
+  detailContainer: { flex: 1 },
+  carSettings: { marginHorizontal: 16, marginBottom: 12, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, gap: 5 },
+  settingsAction: { minHeight: 44, flexDirection: 'row', gap: 9, alignItems: 'center' },
+  settingsLabel: { fontSize: 15, fontWeight: '700' },
+  confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 20 },
   detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 12 },
   detailBody: { paddingHorizontal: 16, paddingBottom: 120, gap: 14 },
-  detailHero: { borderRadius: 18, overflow: 'hidden', height: 220, justifyContent: 'flex-end' },
-  detailHeroImage: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', resizeMode: 'cover' },
-  detailHeroFallback: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
-  detailHeroOverlay: { padding: 16, gap: 6 },
+  detailHero: { borderRadius: 20, overflow: 'hidden' },
+  detailHeroImage: { width: '100%', height: 210 },
+  detailHeroOverlay: { padding: 18, gap: 13, flexDirection: 'row', alignItems: 'center' },
+  detailIdentity: { flex: 1, gap: 3 },
+  detailPhotoStage: { marginHorizontal: 12, marginBottom: 12, borderRadius: 14, overflow: 'hidden' },
+  detailPhotoLabel: { padding: 8, fontSize: 12, textAlign: 'center' },
   detailHeroTitle: { fontSize: 22, fontWeight: '900' },
   detailHeroSub: { fontSize: 14, fontWeight: '700' },
   detailChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

@@ -19,12 +19,14 @@ export default function BottomNav({
   navigation,
   active: activeProp,
   onActiveChange,
+  onHomeReady,
   reducedMotion,
 }: {
   routes: Route[];
   navigation?: any;
   active?: string;
   onActiveChange?: (key: string) => void;
+  onHomeReady?: () => void;
   reducedMotion: boolean;
 }) {
   const [internalActive, setInternalActive] = useState(routes[0]?.key || '');
@@ -80,7 +82,8 @@ export default function BottomNav({
       <Animated.View style={[styles.content, { opacity: pageOpacity }]}>
         {routes.map((entry) => (
           (active === entry.key || loadedTabs.has(entry.key)) ? (
-            <TabPane key={entry.key} route={entry} visible={active === entry.key} navigateTo={navigateTo} />
+            <TabPane key={entry.key} route={entry} visible={active === entry.key} navigateTo={navigateTo}
+              onReady={entry.key === 'home' ? onHomeReady : undefined} />
           ) : null
         ))}
       </Animated.View>
@@ -95,6 +98,8 @@ export default function BottomNav({
             backgroundColor: colors.surface,
             borderTopColor: colors.border,
             paddingBottom: Math.max(insets.bottom, 4),
+            paddingLeft: Math.max(insets.left, 4),
+            paddingRight: Math.max(insets.right, 4),
           },
         ]}
       >
@@ -106,12 +111,13 @@ export default function BottomNav({
               <Pressable
                 key={r.key}
                 accessibilityRole="tab"
-                accessibilityState={{ selected: isActive }}
+                aria-selected={isActive}
                 accessibilityLabel={showBadge ? `${r.label}, ${cartCount} items` : r.label}
                 onPress={() => setActive(r.key)}
                 style={({ pressed }) => [styles.tab, { opacity: pressed ? 0.68 : 1 }]}
               >
-                <View style={[styles.iconWrap, isActive && { backgroundColor: colors.primary }]}>
+                <View style={styles.iconWrap}>
+                  {isActive && <View pointerEvents="none" style={[styles.activeIndicator, { backgroundColor: colors.primary }]} />}
                   <Ionicons name={r.icon as any} size={20} color={isActive ? '#fff' : colors.muted} />
                   {showBadge ? (
                     <View
@@ -154,15 +160,16 @@ export default function BottomNav({
   );
 }
 
-const TabPane = React.memo(function TabPane({ route, visible, navigateTo }: {
+const TabPane = React.memo(function TabPane({ route, visible, navigateTo, onReady }: {
   route: Route;
   visible: boolean;
   navigateTo: (name: string, params?: any) => void;
+  onReady?: () => void;
 }) {
   const Screen = route.getComponent();
   return (
     <View style={visible ? styles.content : styles.hidden}>
-      <Screen navigateTo={navigateTo} />
+      <Screen navigateTo={navigateTo} onReady={onReady} />
     </View>
   );
 });
@@ -176,7 +183,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingTop: 5,
-    paddingHorizontal: 4,
   },
   tabsRow: {
     flex: 1,
@@ -194,9 +200,12 @@ const styles = StyleSheet.create({
     position: 'relative',
     width: 48,
     height: 32,
-    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  activeIndicator: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: 999,
   },
   badge: {
     position: 'absolute',

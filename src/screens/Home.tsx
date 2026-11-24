@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Dimensions, ScrollView, Animated, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Animated, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import {Ionicons, MaterialCommunityIcons} from '@expo/vector-icons';
 import { useAuth } from '../context/Auth';
@@ -18,7 +18,6 @@ import { useCart } from '../context/Cart';
 import { useAppAlert } from '../components/AppAlert';
 import ChallengeLink from '../components/ChallengeLink';
 
-const { width } = Dimensions.get('window');
 const FEED_BATCH_SIZE = 10;
 
 // Feed layout metrics. `FEED_H_PADDING` matches the horizontal padding on the
@@ -26,7 +25,6 @@ const FEED_BATCH_SIZE = 10;
 const FEED_H_PADDING = 32;
 const FEED_GAP = 12;
 const FEED_COLUMNS = 2;
-const FEED_COLUMN_WIDTH = (width - FEED_H_PADDING - FEED_GAP * (FEED_COLUMNS - 1)) / FEED_COLUMNS;
 
 // Height used before a card's image has been measured. Matches the old fixed
 // image box plus its text block so the first paint does not jump noticeably.
@@ -66,7 +64,7 @@ function nameLineCount(name: string): number {
 function imageHeightFor(product: Product, columnWidth: number): number {
   return product.imageSize && product.imageSize.width > 0
     ? (columnWidth * product.imageSize.height) / product.imageSize.width
-    : ESTIMATED_CARD_HEIGHT;
+    : columnWidth * 0.86;
 }
 
 interface Product {
@@ -83,13 +81,17 @@ interface Product {
 
 type FeedEntry = ({ type: 'product'; item: Product } | { type: 'ad'; ad: any }) & MasonryItem;
 
-export default function Home({ navigateTo }: { navigateTo?: (name: string, params?: any) => void }) {
+export default function Home({ navigateTo, onReady }: { navigateTo?: (name: string, params?: any) => void; onReady?: () => void }) {
   const { colors, scheme } = useTheme();
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const feedColumnWidth = Math.max(1, (width - insets.left - insets.right - FEED_H_PADDING - FEED_GAP * (FEED_COLUMNS - 1)) / FEED_COLUMNS);
   const { user } = useAuth();
   const { addItem } = useCart();
   const { show: showAlert } = useAppAlert();
   // Tracks which product is mid-request so its button can show a spinner and
   // reject repeat taps.
+  const [failedImages, setFailedImages] = React.useState<Record<string, boolean>>({});
   const [addingId, setAddingId] = React.useState<string | null>(null);
 
   const handleAddToCart = React.useCallback(
@@ -133,6 +135,9 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
   const [unreadCount, setUnreadCount] = React.useState(0);
   const shimmer = React.useRef(new Animated.Value(0)).current;
   const homeCategories = React.useMemo(() => contextCategories.slice(0, 4), [contextCategories]);
+  React.useEffect(() => {
+    if (!loading && !categoriesLoading) onReady?.();
+  }, [loading, categoriesLoading, onReady]);
 
   // Ads to interleave among the vehicle product feed (placement 'home_feed' or '*').
   const feedAds = useFeedAds(colors);
@@ -149,7 +154,7 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
         type: 'product',
         item,
         imageSize: item.imageSize,
-        height: imageHeightFor(item, FEED_COLUMN_WIDTH) + textHeight,
+        height: imageHeightFor(item, feedColumnWidth) + textHeight,
       });
       // Insert an ad after every 4th product.
       if ((i + 1) % 4 === 0 && adIdx < feedAds.length) {
@@ -163,7 +168,7 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
       }
     });
     return result;
-  }, [visibleProducts, feedAds, dismissedFeedAds]);
+  }, [visibleProducts, feedAds, dismissedFeedAds, feedColumnWidth]);
 
   // Products persist only an image path, so the masonry layout has to learn
   // each image's intrinsic size at runtime to size the card without cropping.
@@ -307,8 +312,12 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
   }, [loading, categoriesLoading, shimmer]);
 
   return (
-    <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView edges={['left', 'right']} style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
+        style={styles.container}
+        contentContainerStyle={{ paddingTop: insets.top }}
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={100}
         onScroll={({ nativeEvent: { contentOffset, layoutMeasurement, contentSize } }) => {
@@ -356,7 +365,7 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
         accessibilityRole="button"
         accessibilityLabel="Search parts"
         activeOpacity={0.85}
-        onPress={() => navigateTo?.('search')}
+        onPress={() => navigateTo?.('Search')}
         style={[
           styles.searchContainer,
           { backgroundColor: colors.surface, borderRadius: DEVICE_CORNER_RADIUS },
@@ -430,15 +439,20 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
               {Array.from({ length: 6 }).map((_, idx) => (
                 <Animated.View
                   key={idx}
-                  style={[
-                    styles.skeletonCard,
-                    { opacity: shimmer, borderColor: scheme === 'dark' ? CARD_BORDER_DARK : CARD_BORDER },
-                  ]}
+                  style={[styles.productCard, styles.skeletonCard, { width: feedColumnWidth, backgroundColor: colors.surface }]}
+                  accessible={false}
                 >
-                  <View style={[styles.skeletonImage, { backgroundColor: colors.surface }]} />
-                  <View style={[styles.skeletonLine, { backgroundColor: colors.surface }]} />
-                  <View style={[styles.skeletonRule, { backgroundColor: colors.surface }]} />
-                  <View style={[styles.skeletonPrice, { backgroundColor: colors.surface }]} />
+                  <Animated.View style={{ opacity: shimmer }}>
+                    <View style={[styles.skeletonImage, { height: feedColumnWidth * 0.86, backgroundColor: colors.border }]} />
+                    <View style={styles.productInfo}>
+                      <View style={[styles.skeletonMeta, { backgroundColor: colors.border }]} />
+                      <View style={[styles.skeletonLine, { backgroundColor: colors.border }]} />
+                      <View style={[styles.productFooter, styles.skeletonFooter]}>
+                        <View style={[styles.skeletonPrice, { backgroundColor: colors.border }]} />
+                        <View style={[styles.addBtn, { backgroundColor: colors.border }]} />
+                      </View>
+                    </View>
+                  </Animated.View>
                 </Animated.View>
               ))}
             </View>
@@ -448,7 +462,7 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
               data={interleaved}
               columns={FEED_COLUMNS}
               gap={FEED_GAP}
-              columnWidth={FEED_COLUMN_WIDTH}
+              columnWidth={feedColumnWidth}
               estimatedHeight={ESTIMATED_CARD_HEIGHT}
               renderItem={(entry) => {
                 const isDark = scheme === 'dark';
@@ -474,43 +488,34 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
                 const { item } = entry;
                 // Full image height: size the box from the measured aspect
                 // ratio instead of cropping the image to a fixed height.
-                const imageHeight = imageHeightFor(item, FEED_COLUMN_WIDTH);
+                const imageHeight = imageHeightFor(item, feedColumnWidth);
 
                 return (
                   <TouchableOpacity
-                    style={[
-                      styles.cardShell,
-                      { backgroundColor: colors.background, borderColor: cardBorder },
-                    ]}
+                    style={[styles.productCard, { backgroundColor: colors.surface }]}
                     activeOpacity={0.8}
                     onPress={() => navigateTo?.('ProductDetails', { productId: item.id })}
                   >
-                    <View style={[styles.imageContainer, { height: imageHeight }]}>
-                      {item.image ? (
-                        <Image source={item.image} style={styles.productImage} resizeMode="contain" />
+                    <View style={[styles.imageContainer, { height: imageHeight, backgroundColor: colors.background }]}>
+                      {item.image && !failedImages[item.image.uri] ? (
+                        <Image source={item.image} style={styles.productImage} resizeMode="contain"
+                          onError={() => setFailedImages(previous => ({ ...previous, [item.image.uri]: true }))} />
                       ) : (
-                        <View style={[styles.imageFallback, { borderColor: cardBorder }]}>
-                          <Ionicons name="cube-outline" size={30} color={colors.muted} />
-                          <Text style={[styles.imageFallbackText, { color: colors.muted }]}>
-                            No image
-                          </Text>
+                        <View style={styles.imageFallback} accessibilityLabel="Product photo unavailable">
+                          <View style={[styles.fallbackIcon, { backgroundColor: colors.surface }]}>
+                            <MaterialCommunityIcons name="cog-outline" size={25} color={colors.accentText} />
+                          </View>
+                          <Text style={[styles.imageFallbackText, { color: colors.muted }]}>Photo unavailable</Text>
                         </View>
                       )}
-                      {item.brand ? (
-                        <View
-                          style={[
-                            styles.brandChip,
-                            { backgroundColor: colors.background, borderColor: cardBorder },
-                          ]}
-                        >
-                          <Text style={[styles.brandChipText, { color: colors.primary }]} numberOfLines={1}>
-                            {item.brand}
-                          </Text>
-                        </View>
-                      ) : null}
                     </View>
 
                     <View style={styles.productInfo}>
+                      {!!(item.brand || item.sku) && (
+                        <Text style={[styles.productMeta, { color: colors.muted }]} numberOfLines={1}>
+                          {[item.brand, item.sku].filter(Boolean).join(' · ')}
+                        </Text>
+                      )}
                       <Text
                         style={[styles.productName, { color: colors.text }]}
                         numberOfLines={nameLineCount(item.name)}
@@ -518,18 +523,11 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
                         {item.name}
                       </Text>
 
-                      <View style={[styles.infoRule, { backgroundColor: cardBorder }]} />
-
                       <View style={styles.productFooter}>
                         <View style={styles.priceBlock}>
-                          <Text style={[styles.productPrice, { color: colors.text }]}>
+                          <Text style={[styles.productPrice, { color: colors.accentText }]}>
                             {formatCedis(item.price)}
                           </Text>
-                          {item.sku ? (
-                            <Text style={[styles.productSku, { color: colors.muted }]} numberOfLines={1}>
-                              {item.sku}
-                            </Text>
-                          ) : null}
                         </View>
                         <TouchableOpacity
                           style={[
@@ -553,10 +551,7 @@ export default function Home({ navigateTo }: { navigateTo?: (name: string, param
                           {addingId === item.id ? (
                             <ActivityIndicator size="small" color="#fff" />
                           ) : (
-                            <>
-                              <Ionicons name="cart-outline" size={13} color="#fff" />
-                              <Text style={styles.addBtnText}>Add</Text>
-                            </>
+                            <Ionicons name="cart-outline" size={19} color="#fff" />
                           )}
                         </TouchableOpacity>
                       </View>
@@ -680,131 +675,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: "hidden",
   },
-  imageContainer: {
-    width: "100%",
-    overflow: "hidden",
-    justifyContent: "center",
-  },
-  productImage: {
-    width: "100%",
-    height: "100%",
-  },
-  imageFallback: {
-    width: "100%",
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderStyle: "dashed",
-  },
-  imageFallbackText: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-  },
-  // Brand sits on the image as a small chip so the product photo keeps the
-  // full width of the card. The chip fill is supplied at render time from the
-  // theme so it stays legible over any photo.
-  brandChip: {
-    position: "absolute",
-    top: 8,
-    left: 8,
-    maxWidth: "72%",
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  brandChipText: {
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 0.7,
-    textTransform: "uppercase",
-  },
-  productInfo: {
-    paddingHorizontal: 12,
-    paddingTop: 11,
-    paddingBottom: 12,
-    width: "100%",
-  },
-  productName: {
-    fontSize: 13,
-    fontWeight: "700",
-    lineHeight: 18,
-  },
-  infoRule: {
-    height: 1,
-    marginTop: 10,
-    marginBottom: 9,
-  },
-  productFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-  },
-  priceBlock: {
-    flex: 1,
-  },
-  productPrice: {
-    fontSize: 15,
-    fontWeight: "900",
-    letterSpacing: -0.2,
-  },
-  productSku: {
-    fontSize: 10,
-    fontWeight: "600",
-    marginTop: 2,
-  },
-  addBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    minWidth: 62,
-    height: 28,
-    paddingHorizontal: 10,
-    borderRadius: 14,
-  },
-  addBtnText: {
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.2,
-  },
-  skeletonCard: {
-    width: FEED_COLUMN_WIDTH,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: FEED_GAP,
-    overflow: "hidden",
-    paddingBottom: 14,
-  },
-  skeletonImage: {
-    width: "100%",
-    height: 116,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
-    marginBottom: 12,
-  },
-  skeletonLine: {
-    width: "86%",
-    height: 11,
-    borderRadius: 6,
-    marginHorizontal: 12,
-  },
-  skeletonRule: {
-    width: "86%",
-    height: 1,
-    marginTop: 10,
-    marginBottom: 10,
-    marginHorizontal: 12,
-  },
-  skeletonPrice: {
-    width: "46%",
-    height: 13,
-    borderRadius: 6,
-    marginHorizontal: 12,
-  },
+  productCard: { width: "100%", borderRadius: 18, overflow: "hidden" },
+  imageContainer: { width: "100%", overflow: "hidden", justifyContent: "center" },
+  productImage: { width: "100%", height: "100%" },
+  imageFallback: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
+  fallbackIcon: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center" },
+  imageFallbackText: { fontSize: 11, fontWeight: "600" },
+  productInfo: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12, gap: 5 },
+  productMeta: { fontSize: 11, lineHeight: 15, fontWeight: "600" },
+  productName: { fontSize: 14, fontWeight: "700", lineHeight: 18 },
+  productFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 6, marginTop: 3 },
+  priceBlock: { flex: 1, minWidth: 0 },
+  productPrice: { fontSize: 16, fontWeight: "800", letterSpacing: -0.3 },
+  addBtn: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  skeletonCard: { marginBottom: FEED_GAP },
+  skeletonImage: { width: "100%" },
+  skeletonMeta: { width: "36%", height: 10, borderRadius: 5 },
+  skeletonLine: { width: "86%", height: 15, borderRadius: 6 },
+  skeletonFooter: { marginTop: 8 },
+  skeletonPrice: { width: "42%", height: 13, borderRadius: 6 },
 });

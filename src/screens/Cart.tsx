@@ -22,6 +22,20 @@ const REC_POOL_SIZE = 40;
 const REC_BORDER = 'rgba(0, 0, 0, 0.10)';
 const REC_BORDER_DARK = 'rgba(255, 255, 255, 0.14)';
 
+function CartThumbnail({ uri }: { uri?: string }) {
+  const { colors } = useTheme();
+  const [failed, setFailed] = React.useState(false);
+  return (
+    <View style={[styles.thumbWrap, { backgroundColor: colors.background }]}>
+      {uri && !failed ? (
+        <Image source={{ uri }} style={styles.thumb} resizeMode="contain" onError={() => setFailed(true)} />
+      ) : (
+        <Ionicons name="cube-outline" size={28} color={colors.accentText} accessibilityLabel="Product photo unavailable" />
+      )}
+    </View>
+  );
+}
+
 type RecProduct = {
   id: string;
   name: string;
@@ -217,26 +231,18 @@ export default function Cart({ navigateTo }: { navigateTo?: (name: string, param
               {items.map((item) => (
               <TouchableOpacity
                 key={`${item.product_id}-${item.sku}`}
-                style={[styles.row, { backgroundColor: colors.surface }]}
+                style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.border }]}
                 activeOpacity={0.9}
                 onPress={() => navigateTo?.('ProductDetails', { productId: item.product_id })}
               >
-                <View style={styles.thumbWrap}>
-                  {item.image_url ? (
-                    <Image source={{ uri: item.image_url }} style={styles.thumb} />
-                  ) : (
-                    <View style={[styles.thumb, styles.thumbFallback, { backgroundColor: colors.background }]}>
-                      <Ionicons name="image-outline" size={26} color={colors.muted} />
-                    </View>
-                  )}
-                </View>
+                <CartThumbnail key={item.image_url} uri={item.image_url} />
 
                 <View style={styles.info}>
                   <Text style={[styles.name, { color: colors.text }]} numberOfLines={2}>
                     {item.title}
                   </Text>
                   <Text style={[styles.sku, { color: colors.muted }]}>SKU: {item.sku || 'N/A'}</Text>
-                  <Text style={[styles.price, { color: colors.primary }]}>
+                  <Text style={[styles.price, { color: colors.accentText }]}>
                     {formatCedis(item.price * item.quantity)}
                   </Text>
 
@@ -410,24 +416,14 @@ const styles = StyleSheet.create({
   clearText: { fontSize: 13, fontWeight: '700' },
   scroll: { flex: 1 },
   listContent: { paddingHorizontal: 16, gap: 12, paddingTop: 4 },
-  row: {
-    flexDirection: 'row',
-    borderRadius: 18,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  thumbWrap: { marginRight: 12 },
-  thumb: { width: 88, height: 88, borderRadius: 14 },
-  thumbFallback: { alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', alignItems: 'flex-start', borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, padding: 12 },
+  thumbWrap: { width: 88, height: 96, marginRight: 12, borderRadius: 14, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  thumb: { width: '100%', height: '100%' },
   info: { flex: 1 },
   name: { fontSize: 15, fontWeight: '800', lineHeight: 20 },
   sku: { fontSize: 12, fontWeight: '600', marginTop: 2 },
   price: { fontSize: 15, fontWeight: '900', marginTop: 6 },
-  qtyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
+  qtyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -435,7 +431,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 2,
   },
-  stepBtn: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
+  stepBtn: { width: 36, height: 40, alignItems: 'center', justifyContent: 'center' },
   qty: { fontSize: 15, fontWeight: '800', minWidth: 26, textAlign: 'center' },
   removeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   removeText: { color: '#ff5d5d', fontWeight: '700', fontSize: 13 },

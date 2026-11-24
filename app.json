@@ -3,7 +3,7 @@
     "name": "AutoHelp",
     "slug": "AUTO-HELP-GH",
     "version": "2.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {

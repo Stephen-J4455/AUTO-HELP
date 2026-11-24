@@ -1,307 +1,218 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  FlatList,
-  ActivityIndicator,
-  Modal,
-  Image,
-} from 'react-native';
+import React, { useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme';
-import { sendChatMessage, buildClientContext, ChatMessage, ChatCard } from '../utils/chatbot';
-import Markdown from './Markdown';
-import { navigateGlobal } from '../utils/navigation';
-import { getProductImageUri } from '../utils/productImages';
-import { formatCedis } from '../utils/currency';
+import { CANVAS_SECTIONS, Canvas, CanvasSection, ChatMessage, replyFlow, sendChatMessage } from '../utils/chatbot';
+import AutobotCanvas from './AutobotCanvas';
 
-type CardItem = ChatCard & { key: string };
+const SUGGESTIONS = [
+  { title: 'Find a part', detail: 'Part name, brand or SKU', icon: 'search-outline', prompt: 'Find this part: ' },
+  { title: 'Check fitment', detail: 'Year, make and model', icon: 'car-sport-outline', prompt: 'Check fitment for my ' },
+  { title: 'Delivery options', detail: 'Where Auto Help delivers', icon: 'bus-outline', prompt: 'Where do you deliver?' },
+  { title: 'How to order', detail: 'From part selection to checkout', icon: 'bag-check-outline', prompt: 'How do I place an order?' },
+] as const;
 
-type Props = {
-  visible: boolean;
-  onClose: () => void;
-  model?: string | null;
-  systemPrompt?: string | null;
-  storeName?: string | null;
-};
+const EMPTY_CANVAS: Canvas = { order: [...CANVAS_SECTIONS], products: [] };
+type ConversationMessage = ChatMessage & { canvas?: Canvas };
 
-const GREETING: ChatMessage = {
-  role: 'assistant',
-  content: "Hi! 👋 I'm the Auto Help GH assistant. Ask me about parts, categories, vehicle fitment or how to order.",
-};
-
-export default function ChatBot({ visible, onClose, model, systemPrompt, storeName }: Props) {
+export default function ChatBot({ navigateTo }: { navigateTo: (name: string, params?: any) => void }) {
   const { colors } = useTheme();
-  const [messages, setMessages] = React.useState<ChatMessage[]>([GREETING]);
-  const [cards, setCards] = React.useState<Record<number, CardItem[]>>({});
-  const [input, setInput] = React.useState('');
-  const [sending, setSending] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const listRef = React.useRef<any>(null);
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [arranging, setArranging] = useState(false);
+  const [webSearch, setWebSearch] = useState(false);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const inputRef = useRef<TextInput>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollToQuestion = useRef(false);
+  const inFlight = useRef(false);
+  const canSend = !!input.trim() && !sending;
+  const workspace = messages.filter(({ canvas }) => canvas).at(-1)?.canvas ?? EMPTY_CANVAS;
+  const latest = messages.at(-1);
+  const latestFlow = latest?.role === 'assistant' ? replyFlow(latest.content, latest.canvas) : [];
+  const displayedProducts = new Set(latestFlow.flatMap(block => block.kind === 'text' ? [] : [block.productId]));
+  const canArrange = latestFlow.length > 1 && displayedProducts.size === 1;
+  const hasConversation = messages.length > 0;
 
-  React.useEffect(() => {
-    if (visible) setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 50);
-  }, [visible]);
-
-  const clearChat = () => {
-    setMessages([GREETING]);
-    setCards({});
-    setError(null);
+  function clearChat() {
+    setMessages([]);
+    setSelected(null);
+    setArranging(false);
+    scrollToQuestion.current = false;
+    setError('');
     setInput('');
-  };
+  }
 
-  const send = async () => {
+  async function send() {
     const text = input.trim();
-    if (!text || sending) return;
-    const next = [...messages, { role: 'user' as const, content: text }];
+    if (!text || inFlight.current) return;
+    const next: ConversationMessage[] = [...messages, { role: 'user', content: text }];
+    inFlight.current = true;
+    scrollToQuestion.current = true;
     setMessages(next);
     setInput('');
+    setError('');
     setSending(true);
-    setError(null);
+    setArranging(false);
     try {
-      const context = await buildClientContext();
-      const { reply, cards: replyCards } = await sendChatMessage(
-        next.filter((m) => m.role === 'user' || m.role === 'assistant') as ChatMessage[],
-        { model, systemPrompt, storeName, context },
-      );
-      const idx = next.length; // assistant index
-      setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-      if (replyCards && replyCards.length) {
-        setCards((prev) => ({ ...prev, [idx]: replyCards.map((c, i) => ({ ...c, key: `${idx}-${i}` })) }));
+      const { reply, canvas } = await sendChatMessage(next, workspace, selected ?? workspace.products[0]?.id, webSearch);
+      if (canvas && !canvas.products.some(({ id }) => id === selected)) {
+        setSelected(null);
       }
-    } catch (e: any) {
-      setError(e?.message || 'Something went wrong.');
+      setMessages([...next, { role: 'assistant', content: reply, canvas }]);
+    } catch (failure) {
+      setMessages(messages);
+      setInput(text);
+      setError((failure as Error).message || 'Couldn’t complete the request.');
     } finally {
+      inFlight.current = false;
       setSending(false);
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
     }
-  };
+  }
 
-  const openCard = (card: CardItem) => {
-    navigateGlobal(card.target.screen, card.target.params);
-    onClose();
-  };
-
-  const renderCard = (card: CardItem) => {
-    const imageUri =
-      card.type === 'product' && card.image
-        ? getProductImageUri(card.image)
-        : card.image || null;
-    return (
-      <TouchableOpacity
-        activeOpacity={0.85}
-        style={[styles.cardItem, { backgroundColor: colors.surface, borderColor: colors.background }]}
-        onPress={() => openCard(card)}
-      >
-        {imageUri ? (
-          <Image source={{ uri: imageUri }} style={styles.cardImage} />
-        ) : (
-          <View style={[styles.cardImage, { backgroundColor: colors.background }]}>
-            <Ionicons
-              name={card.type === 'vehicle' ? 'car-sport' : 'cube-outline'}
-              size={22}
-              color={colors.muted}
-            />
-          </View>
-        )}
-        <View style={styles.cardBody}>
-          <Text style={[styles.cardType, { color: colors.primary }]} numberOfLines={1}>
-            {card.type === 'vehicle' ? 'Vehicle' : 'Product'}
-          </Text>
-          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
-            {card.title}
-          </Text>
-          {card.subtitle ? (
-            <Text style={[styles.cardSubtitle, { color: colors.muted }]} numberOfLines={1}>
-              {card.subtitle}
-            </Text>
-          ) : null}
-          {typeof card.price === 'number' ? (
-            <Text style={[styles.cardPrice, { color: colors.primary }]}>{formatCedis(card.price)}</Text>
-          ) : null}
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-      </TouchableOpacity>
-    );
-  };
-
-  if (!visible) return null;
+  function moveBlock(index: number, offset: -1 | 1) {
+    setMessages((previous) => {
+      const message = previous.at(-1);
+      if (message?.role !== 'assistant' || !message.canvas) return previous;
+      const flow = [...replyFlow(message.content, message.canvas)];
+      const sibling = index + offset;
+      if (!flow[index] || !flow[sibling]) return previous;
+      [flow[index], flow[sibling]] = [flow[sibling], flow[index]];
+      const order = [...new Set<CanvasSection>([
+        ...flow.map(({ kind }) => kind === 'text' ? 'answer' as const : kind),
+        ...message.canvas.order,
+      ])];
+      return [...previous.slice(0, -1), { ...message, canvas: { ...message.canvas, flow, order } }];
+    });
+  }
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={[styles.container, { backgroundColor: colors.background }]}>
-        <KeyboardAvoidingView
-          style={[styles.flex, { backgroundColor: colors.background }]}
-          behavior="padding"
-          keyboardVerticalOffset={10}
-        >
-           <View style={[styles.header, { backgroundColor: colors.background, borderColor: colors.background }]}>
-             <TouchableOpacity onPress={onClose} hitSlop={10} style={styles.backBtn}>
-               <Ionicons name="arrow-back" size={24} color={colors.text} />
-             </TouchableOpacity>
-             <View style={[styles.headerIcon, { backgroundColor: `${colors.primary}18` }]}>
-               <Ionicons name="chatbubble-ellipses" size={20} color={colors.primary} />
-             </View>
-             <Text style={[styles.headerTitle, { color: colors.text }]}>Autobot</Text>
-             <View style={styles.headerActions}>
-               <TouchableOpacity onPress={clearChat} hitSlop={8} style={styles.headerActionBtn}>
-                 <Ionicons name="brush-outline" size={20} color={colors.muted} />
-               </TouchableOpacity>
-             </View>
-           </View>
-
-          <FlatList
-            ref={listRef}
-            data={messages}
-            keyExtractor={(_, i) => String(i)}
-            contentContainerStyle={styles.list}
-            style={styles.flex}
-            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-            renderItem={({ item, index }) => {
-              const isUser = item.role === 'user';
-              const rowCards = cards[index];
-              return (
-                <View style={[styles.bubbleRow, isUser ? styles.rowUser : styles.rowBot]}>
-                  <View
-                    style={[
-                      styles.bubble,
-                      {
-                        backgroundColor: isUser ? colors.primary : colors.surface,
-                        borderColor: isUser ? colors.primary : colors.background,
-                      },
-                    ]}
-                  >
-                    {isUser ? (
-                      <Text style={[styles.bubbleText, { color: colors.surface }]}>{item.content}</Text>
-                    ) : (
-                      <Markdown content={item.content} color={colors.text} />
-                    )}
-                  </View>
-                  {rowCards && rowCards.length > 0 && !isUser ? (
-                    <View style={styles.cardList}>
-                      {rowCards.map((c) => (
-                        <React.Fragment key={c.key}>{renderCard(c)}</React.Fragment>
-                      ))}
-                    </View>
-                  ) : null}
-                </View>
-              );
-            }}
-          />
-
-          {error ? (
-            <View style={[styles.errorBox, { backgroundColor: `${colors.danger || '#B91C1C'}14` }]}>
-              <Text style={[styles.errorText, { color: colors.danger || '#B91C1C' }]}>{error}</Text>
-            </View>
-          ) : null}
-
-          <View style={[styles.inputBar, { backgroundColor: colors.surface, borderColor: colors.background }]}>
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.background }]}
-              value={input}
-              onChangeText={setInput}
-              placeholder="Type a message..."
-              placeholderTextColor={colors.muted}
-              multiline
-              editable={!sending}
-            />
-            <TouchableOpacity
-              style={[styles.sendBtn, { backgroundColor: colors.primary, opacity: sending ? 0.6 : 1 }]}
-              onPress={send}
-              disabled={sending}
-              hitSlop={6}
-            >
-              {sending ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Ionicons name="send" size={18} color="#fff" />
-              )}
-            </TouchableOpacity>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.flex, { backgroundColor: colors.background }]}>
+      <KeyboardAvoidingView style={styles.flex} behavior="padding" keyboardVerticalOffset={10}>
+        <View style={styles.header}>
+          <View style={[styles.mark, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+            <Ionicons name="construct-outline" size={19} color={colors.primary} />
           </View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </Modal>
+          <Text accessibilityRole="header" style={[styles.headerTitle, { color: colors.text }]}>Autobot</Text>
+          {hasConversation && (
+            <>
+              {canArrange && (
+                <Pressable accessibilityRole="button" accessibilityLabel="Arrange latest reply" aria-selected={arranging}
+                  onPress={() => setArranging(!arranging)} disabled={sending}
+                  style={[styles.headerAction, { borderColor: arranging ? colors.primary : colors.border, backgroundColor: colors.surface }]}>
+                  <Ionicons name="swap-vertical" size={19} color={arranging ? colors.primary : colors.text} />
+                </Pressable>
+              )}
+              <Pressable accessibilityRole="button" accessibilityLabel="New conversation" onPress={clearChat} disabled={sending}
+                style={[styles.headerAction, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+                <Ionicons name="create-outline" size={19} color={colors.text} />
+              </Pressable>
+            </>
+          )}
+        </View>
+
+        <ScrollView ref={scrollRef} style={styles.flex} keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() => {
+            if (!scrollToQuestion.current) return;
+            scrollToQuestion.current = false;
+            scrollRef.current?.scrollToEnd({ animated: false });
+          }}
+          contentContainerStyle={[styles.body, !hasConversation && styles.welcomeBody]}>
+          {!hasConversation ? (
+            <View>
+              <Text accessibilityRole="header" style={[styles.headline, { color: colors.text }]}>What are you{'\n'}<Text style={{ color: colors.primary }}>working on?</Text></Text>
+              <View style={styles.suggestionGrid}>
+                {SUGGESTIONS.map(({ title, detail, icon, prompt }, index) => {
+                  const reverse = index % 2 === 1;
+                  return (
+                    <Pressable key={title} accessibilityRole="button" accessibilityLabel={title} accessibilityHint={detail}
+                      onPress={() => { setInput(prompt); inputRef.current?.focus(); }}
+                      style={({ pressed }) => [styles.suggestion, { backgroundColor: colors.surface, opacity: pressed ? 0.72 : 1 }]}>
+                      <View pointerEvents="none" style={[styles.cutout, styles.cutoutTop, reverse ? styles.cutoutLeft : styles.cutoutRight, { backgroundColor: colors.background }]} />
+                      <View pointerEvents="none" style={[styles.cutout, styles.cutoutBottom, reverse ? styles.cutoutRight : styles.cutoutLeft, { backgroundColor: colors.background }]} />
+                      <Ionicons name={icon} size={24} color={colors.primary} />
+                      <View style={styles.suggestionCopy}>
+                        <Text style={[styles.suggestionTitle, { color: colors.text }]}>{title}</Text>
+                        <Text style={[styles.suggestionDetail, { color: colors.muted }]}>{detail}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            <>
+              {messages.map(({ role, content, canvas }, index) => role === 'user' ? (
+                <Text key={index} style={[styles.question, index > 0 && styles.followUp, { color: colors.text }]}>{content}</Text>
+              ) : (
+                <AutobotCanvas key={index} blocks={replyFlow(content, canvas)} products={canvas?.products ?? []}
+                  onMove={arranging && index === messages.length - 1 ? moveBlock : undefined}
+                  onOpenPart={(id) => { setSelected(id); navigateTo('ProductDetails', { productId: id }); }} />
+              ))}
+              {sending && <Text accessibilityLiveRegion="polite" style={[styles.progress, { color: colors.muted }]}>Working on your request…</Text>}
+            </>
+          )}
+        </ScrollView>
+
+        {!!error && <Text accessibilityLiveRegion="assertive" style={[styles.error, { color: colors.danger }]}>{error}</Text>}
+
+        <View style={styles.inputBar}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Search the web" accessibilityState={{ selected: webSearch }}
+            onPress={() => setWebSearch(!webSearch)} disabled={sending}
+            style={[styles.webButton, { backgroundColor: webSearch ? colors.primary : colors.surface, borderColor: webSearch ? colors.primary : colors.border }]}>
+            <Ionicons name="globe-outline" size={22} color={webSearch ? '#fff' : colors.accentText} />
+          </Pressable>
+          <TextInput
+            ref={inputRef}
+            accessibilityLabel="Message the AI assistant"
+            style={[styles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+            value={input}
+            onChangeText={setInput}
+            placeholder={hasConversation ? 'Ask a follow-up or move a section…' : 'Ask about a part…'}
+            placeholderTextColor={colors.muted}
+            multiline
+            maxLength={1800}
+            editable={!sending}
+          />
+          <Pressable accessibilityRole="button" accessibilityLabel="Send message" disabled={!canSend} onPress={() => void send()}
+            style={[styles.send, { backgroundColor: canSend || sending ? colors.primary : colors.surface, borderColor: canSend || sending ? colors.primary : colors.border }]}>
+            {sending ? <ActivityIndicator color="#fff" /> : <Ionicons name="arrow-up" size={23} color={canSend ? '#fff' : colors.muted} />}
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   flex: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  headerIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 17, fontWeight: '800', marginLeft: 12, flex: 1 },
-  headerActions: { flexDirection: 'row', alignItems: 'center' },
-  headerActionBtn: { padding: 4, marginRight: 4 },
-  backBtn: { padding: 4, marginRight: 4 },
-  list: { padding: 16, gap: 10 },
-  bubbleRow: { flexDirection: 'row' },
-  rowUser: { justifyContent: 'flex-end' },
-  rowBot: { justifyContent: 'flex-start', flexDirection: 'column', alignItems: 'flex-start' },
-  bubble: {
-    maxWidth: '80%',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  bubbleText: { fontSize: 14, lineHeight: 20 },
-  cardList: { marginTop: 8, gap: 8, width: '100%' },
-  cardItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 10,
-  },
-  cardImage: {
-    width: 52,
-    height: 52,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  cardBody: { flex: 1, gap: 2 },
-  cardType: { fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.4 },
-  cardTitle: { fontSize: 13, fontWeight: '800' },
-  cardSubtitle: { fontSize: 11, fontWeight: '600' },
-  cardPrice: { fontSize: 13, fontWeight: '900' },
-  errorBox: { marginHorizontal: 16, padding: 10, borderRadius: 10, marginBottom: 8 },
-  errorText: { fontSize: 13, fontWeight: '600' },
-  inputBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    gap: 10,
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    height: 52,
-    fontSize: 14,
-    textAlignVertical: 'center',
-  },
-  sendBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, minHeight: 60 },
+  mark: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: '900', flex: 1 },
+  headerAction: { width: 44, height: 44, borderRadius: 13, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  body: { width: '100%', paddingVertical: 16, gap: 12 },
+  welcomeBody: { maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, flexGrow: 1, justifyContent: 'center' },
+  headline: { fontSize: 35, lineHeight: 38, letterSpacing: -1.3, fontWeight: '900', marginBottom: 22 },
+  suggestionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  suggestion: { overflow: 'hidden', minWidth: 0, minHeight: 146, flexBasis: '46%', flexGrow: 1, padding: 17, gap: 10, borderRadius: 18, justifyContent: 'space-between' },
+  cutout: { position: 'absolute', width: 46, height: 46, borderRadius: 23 },
+  cutoutTop: { top: -18 },
+  cutoutBottom: { bottom: -18 },
+  cutoutLeft: { left: -18 },
+  cutoutRight: { right: -18 },
+  suggestionCopy: { paddingBottom: 4, paddingHorizontal: 4, gap: 5 },
+  suggestionTitle: { fontSize: 16, fontWeight: '900' },
+  suggestionDetail: { fontSize: 12, lineHeight: 17 },
+  question: { fontSize: 21, fontWeight: '800', letterSpacing: -0.3, marginBottom: 4, marginHorizontal: 16 },
+  followUp: { marginTop: 18 },
+  progress: { fontSize: 14, lineHeight: 20, marginHorizontal: 16 },
+  error: { fontSize: 13, marginHorizontal: 16, paddingTop: 8 },
+  webButton: { width: 44, height: 48, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingVertical: 8 },
+  input: { flex: 1, minWidth: 0, minHeight: 48, maxHeight: 100, paddingHorizontal: 14, paddingVertical: 13, fontSize: 14, borderWidth: 1, borderRadius: 16 },
+  send: { width: 48, height: 48, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
 });

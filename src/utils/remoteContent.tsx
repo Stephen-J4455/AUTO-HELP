@@ -87,8 +87,6 @@ export type StoreSettings = {
   social_twitch: string | null;
   social_telegram: string | null;
   // Chatbot (OpenRouter) configuration
-  chatbot_enabled: boolean;
-  chatbot_enabled_admin: boolean;
   chatbot_model: string | null;
   chatbot_system_prompt: string | null;
 };
@@ -307,8 +305,6 @@ export function useStoreSettings() {
     social_threads: null,
     social_twitch: null,
     social_telegram: null,
-    chatbot_enabled: false,
-    chatbot_enabled_admin: false,
     chatbot_model: null,
     chatbot_system_prompt: null,
   });
@@ -342,8 +338,6 @@ export function useStoreSettings() {
           social_threads: row.social_threads || null,
           social_twitch: row.social_twitch || null,
           social_telegram: row.social_telegram || null,
-          chatbot_enabled: Boolean(row.chatbot_enabled),
-          chatbot_enabled_admin: Boolean(row.chatbot_enabled_admin),
           chatbot_model: row.chatbot_model || null,
           chatbot_system_prompt: row.chatbot_system_prompt || null,
         });
